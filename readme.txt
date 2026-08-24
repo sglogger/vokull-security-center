@@ -85,11 +85,12 @@ Service provided by Cloudflare, Inc. — [website terms of use](https://www.clou
 
 == Installation ==
 
-1. Upload the plugin to `/wp-content/plugins/vokull-security-center` or install the ZIP from the Plugins screen.
-2. Activate it. WordPress Multisite is not supported and activation will stop with an explanation.
-3. Open Security Center → Settings and set your alert recipients.
-4. For country-based rules, add a MaxMind GeoLite2 licence key (free) and download the database, or configure your CDN's country header.
-5. Leave blocking in monitor mode for a few days, review the log, then arm it.
+1. Install it from the Plugins screen, or upload the release ZIP under Plugins > Add New > Upload Plugin. If you take the ZIP from GitHub, use the `vokull-security-center.zip` release asset and not the "Download ZIP" source archive: the source archive carries no `vendor/` directory and unpacks under a branch-suffixed directory name, which breaks country lookups and updates.
+2. The plugin directory must be named `vokull-security-center`. It is the plugin slug, and updates are matched against it.
+3. Activate it. WordPress Multisite is not supported and activation will stop with an explanation.
+4. Open Security Center → Settings and set your alert recipients.
+5. For country-based rules, add a MaxMind GeoLite2 licence key (free) and download the database, or configure your CDN's country header.
+6. Leave blocking in monitor mode for a few days, review the log, then arm it.
 
 == Frequently Asked Questions ==
 
@@ -116,6 +117,10 @@ No. An attacker using a VPN endpoint inside an allowed country resolves to that 
 = What happens if the GeoIP database is missing or broken? =
 
 An individual IP that cannot be resolved is treated as not allowed and is blocked. But if the lookup subsystem as a whole is unavailable, blocking automatically falls back to monitor mode and raises a critical alert, so a deleted database file can never lock you out.
+
+= The Status screen says the GeoIP self test failed, but the database is installed. Why? =
+
+Almost always because the plugin was installed from a GitHub source archive rather than the release ZIP, so the bundled MaxMind reader library in `vendor/` is missing. Downloading the database needs no library and succeeds; reading it does. Two-factor enrolment showing no QR code is the same cause. Reinstall from the release ZIP.
 
 = Can I get locked out? =
 

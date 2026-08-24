@@ -289,6 +289,42 @@ actually sets.
   a country header. The database cannot be bundled — MaxMind's licence forbids
   redistribution.
 
+## Installation
+
+Download **`vokull-security-center.zip`** from the
+[latest release](https://github.com/sglogger/vokull-security-center/releases/latest)
+and install it under *Plugins &rarr; Add New &rarr; Upload Plugin*. Once the
+plugin is on WordPress.org, the ordinary search-and-install route is the same
+package.
+
+Do **not** install the repository itself &mdash; neither the green
+**Code &rarr; Download ZIP** button nor the *Source code (zip/tar.gz)* assets
+GitHub attaches to every release. Those are source trees, and they are wrong in
+two ways that both fail quietly rather than loudly:
+
+- **`vendor/` is missing.** It is not tracked in git; CI builds it with
+  `composer install --no-dev` and it exists only inside the release ZIP. Without
+  it there is no `MaxMind\Db\Reader` and no `BaconQrCode\Writer`. The plugin
+  degrades instead of fataling, which is exactly what makes this hard to spot:
+  country lookups all return unknown, geo blocking stands itself down, the
+  Status screen reports the GeoIP self test as *Lookup failed* even though the
+  database downloaded successfully moments earlier, and two-factor enrolment
+  offers the typed secret with no QR code beside it.
+- **The directory is named after the branch or tag.** A source ZIP unpacks to
+  `vokull-security-center-main`, and WordPress keeps whatever the ZIP's top-level
+  directory is called. The directory name is the plugin slug, so updates no
+  longer match it.
+
+If a source ZIP is already installed, deactivate and delete that copy and
+install the release ZIP; both problems go with the directory. Settings and the
+log survive that: deleting the plugin only discards them if
+*Settings &rarr; Delete all data on uninstall* was switched on, which it is not
+by default.
+
+Installing from a source tree deliberately &mdash; a development checkout, for
+instance &mdash; means naming the directory `vokull-security-center` and running
+`composer install --no-dev` inside it yourself.
+
 ## Configuration constants
 
 All optional, all set in `wp-config.php`.
