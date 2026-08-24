@@ -132,8 +132,8 @@ final class Installer {
 		if ( is_multisite() ) {
 			deactivate_plugins( WPSEC_BASENAME );
 			wp_die(
-				esc_html__( 'Sentinel Security Center does not support WordPress Multisite. It has not been activated.', 'sentinel-security-center' ),
-				esc_html__( 'Multisite is not supported', 'sentinel-security-center' ),
+				esc_html__( 'Security Center does not support WordPress Multisite. It has not been activated.', 'vokull-security-center' ),
+				esc_html__( 'Multisite is not supported', 'vokull-security-center' ),
 				[
 					'back_link' => true,
 					'response'  => 200,
@@ -161,7 +161,7 @@ final class Installer {
 			[
 				'object_id' => WPSEC_VERSION,
 				'message'   => sprintf(
-					'Sentinel Security Center %s was activated. The current state of users, files and configuration has been recorded as the baseline; changes from here on will be reported.',
+					'Security Center %s was activated. The current state of users, files and configuration has been recorded as the baseline; changes from here on will be reported.',
 					WPSEC_VERSION
 				),
 				'data'      => [ 'version' => WPSEC_VERSION ],
@@ -182,7 +182,7 @@ final class Installer {
 			'security_center.deactivated',
 			[
 				'object_id' => WPSEC_VERSION,
-				'message'   => 'Sentinel Security Center was deactivated. Nothing is being monitored until it is switched back on.',
+				'message'   => 'Security Center was deactivated. Nothing is being monitored until it is switched back on.',
 				'data'      => [ 'version' => WPSEC_VERSION ],
 			]
 		);

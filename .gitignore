@@ -17,7 +17,6 @@ vendor/
 .phpunit.result.cache
 *.zip
 *.log
-languages/*.mo
 
 # OS
 .DS_Store

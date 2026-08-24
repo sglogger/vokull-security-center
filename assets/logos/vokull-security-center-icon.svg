@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-label="Sentinel Security Center icon">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-label="Vokull Security Center icon">
   <defs>
     <linearGradient id="bg" x1="120" y1="80" x2="900" y2="940" gradientUnits="userSpaceOnUse">
       <stop offset="0" stop-color="#0B1739"/>
@@ -42,7 +42,7 @@
           fill="#0D1D3C" stroke="url(#shield)" stroke-width="34" stroke-linejoin="round"/>
   </g>
 
-  <!-- Sentinel eye / radar -->
+  <!-- Watchful eye / radar -->
   <path d="M334 495
            C380 420 439 382 512 382
            C585 382 644 420 690 495

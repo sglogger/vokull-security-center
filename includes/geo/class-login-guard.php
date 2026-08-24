@@ -116,13 +116,19 @@ final class Login_Guard {
 			);
 		}
 
-		// The message is byte-identical to the core wrong-password error, so
-		// nothing on the login screen betrays that a geo rule exists. The error
-		// CODE is our own, so third-party brute-force plugins keyed on core
-		// codes do not count this against the address.
+		// The login screen says only that the credentials were refused: no
+		// mention of a country, a rule, or that this address in particular was
+		// turned away. It is not word-for-word what WordPress says for a wrong
+		// password — core names the user and appends a "Lost your password?"
+		// link — so the two are distinguishable to somebody who compares them
+		// deliberately. That is a far smaller disclosure than naming the rule,
+		// and it is the trade this message makes.
+		//
+		// The error CODE is our own, so third-party brute-force plugins keyed
+		// on core codes do not count this against the address.
 		return new \WP_Error(
 			'wpsec_geo_blocked',
-			__( '<strong>Error:</strong> The username or password you entered is incorrect.' ) // phpcs:ignore WordPress.WP.I18n.MissingArgDomain -- deliberately reuses the core string so the wording matches exactly.
+			__( '<strong>Error:</strong> The username or password you entered is incorrect.', 'vokull-security-center' )
 		);
 	}
 

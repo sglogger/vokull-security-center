@@ -103,11 +103,16 @@ final class Two_Factor_Login {
 			]
 		);
 
-		// Same wording as a wrong password, so the endpoint does not reveal
-		// which accounts carry a second factor.
+		// A deliberately incurious message: it names neither the password nor
+		// the second factor, so the endpoint does not reveal which accounts
+		// carry one. It is not word-for-word what WordPress says for a wrong
+		// password — core names the user and appends a "Lost your password?"
+		// link — so somebody comparing two responses side by side can tell the
+		// two apart. What they cannot tell is why, which is the part worth
+		// protecting.
 		return new \WP_Error(
 			'wpsec_2fa_api_refused',
-			__( '<strong>Error:</strong> The username or password you entered is incorrect.' ) // phpcs:ignore WordPress.WP.I18n.MissingArgDomain -- deliberately reuses the core string so the wording matches exactly.
+			__( '<strong>Error:</strong> The username or password you entered is incorrect.', 'vokull-security-center' )
 		);
 	}
 
@@ -202,7 +207,7 @@ final class Two_Factor_Login {
 		}
 
 		if ( ! $this->attempt_allowed( $user_id ) ) {
-			$this->render( $user, $stage, $nonce, $redirect, $remember, __( 'Too many attempts. Wait a few minutes and sign in again.', 'sentinel-security-center' ) );
+			$this->render( $user, $stage, $nonce, $redirect, $remember, __( 'Too many attempts. Wait a few minutes and sign in again.', 'vokull-security-center' ) );
 		}
 
 		if ( $wants_mail && 'verify' === $stage ) {
@@ -215,7 +220,7 @@ final class Two_Factor_Login {
 				$redirect,
 				$remember,
 				is_wp_error( $sent ) ? $sent->get_error_message() : '',
-				is_wp_error( $sent ) ? '' : __( 'A one-time code is on its way to the address on your account.', 'sentinel-security-center' )
+				is_wp_error( $sent ) ? '' : __( 'A one-time code is on its way to the address on your account.', 'vokull-security-center' )
 			);
 		}
 
@@ -224,7 +229,7 @@ final class Two_Factor_Login {
 
 			if ( null === $codes ) {
 				$this->count_failure( $user, 'enrol' );
-				$this->render( $user, $stage, $nonce, $redirect, $remember, __( 'That code was not right. Check the app and try the current code.', 'sentinel-security-center' ) );
+				$this->render( $user, $stage, $nonce, $redirect, $remember, __( 'That code was not right. Check the app and try the current code.', 'vokull-security-center' ) );
 			}
 
 			$this->complete( $user, $remember, $redirect, $codes );
@@ -234,7 +239,7 @@ final class Two_Factor_Login {
 
 		if ( false === $method ) {
 			$this->count_failure( $user, 'verify' );
-			$this->render( $user, $stage, $nonce, $redirect, $remember, __( 'That code was not right, or it has already been used.', 'sentinel-security-center' ) );
+			$this->render( $user, $stage, $nonce, $redirect, $remember, __( 'That code was not right, or it has already been used.', 'vokull-security-center' ) );
 		}
 
 		$this->complete( $user, $remember, $redirect, null, (string) $method );
@@ -431,8 +436,8 @@ final class Two_Factor_Login {
 
 		$this->page_header(
 			'enrol' === $stage
-				? __( 'Set up two-factor authentication', 'sentinel-security-center' )
-				: __( 'Two-factor authentication', 'sentinel-security-center' )
+				? __( 'Set up two-factor authentication', 'vokull-security-center' )
+				: __( 'Two-factor authentication', 'vokull-security-center' )
 		);
 
 		if ( '' !== $error ) {
@@ -446,15 +451,15 @@ final class Two_Factor_Login {
 		echo '<form name="wpsec2fa" id="loginform" method="post" action="' . esc_url( add_query_arg( 'action', self::ACTION, wp_login_url() ) ) . '">';
 
 		if ( 'enrol' === $stage ) {
-			echo '<p>' . esc_html__( 'This site requires administrators to use an authenticator app. Scan the code below, then enter the six digits it shows.', 'sentinel-security-center' ) . '</p>';
+			echo '<p>' . esc_html__( 'This site requires administrators to use an authenticator app. Scan the code below, then enter the six digits it shows.', 'vokull-security-center' ) . '</p>';
 			$this->render_enrolment_key( $secret, $uri, $svg );
 		} else {
-			echo '<p>' . esc_html__( 'Enter the six-digit code from your authenticator app. A recovery code works here too.', 'sentinel-security-center' ) . '</p>';
+			echo '<p>' . esc_html__( 'Enter the six-digit code from your authenticator app. A recovery code works here too.', 'vokull-security-center' ) . '</p>';
 		}
 
 		?>
 		<p>
-			<label for="wpsec_code"><?php esc_html_e( 'Authentication code', 'sentinel-security-center' ); ?></label>
+			<label for="wpsec_code"><?php esc_html_e( 'Authentication code', 'vokull-security-center' ); ?></label>
 			<input type="text" name="wpsec_code" id="wpsec_code" class="input" value="" size="20"
 				autocomplete="one-time-code" inputmode="numeric" pattern="[0-9A-Za-z \-]*"
 				autocapitalize="off" autocorrect="off" spellcheck="false" autofocus>
@@ -467,16 +472,16 @@ final class Two_Factor_Login {
 		<?php endif; ?>
 		<p class="submit">
 			<input type="submit" name="wp-submit" id="wp-submit" class="button button-primary button-large"
-				value="<?php echo esc_attr( 'enrol' === $stage ? __( 'Confirm and sign in', 'sentinel-security-center' ) : __( 'Sign in', 'sentinel-security-center' ) ); ?>">
+				value="<?php echo esc_attr( 'enrol' === $stage ? __( 'Confirm and sign in', 'vokull-security-center' ) : __( 'Sign in', 'vokull-security-center' ) ); ?>">
 		</p>
 		<?php
 
 		if ( 'verify' === $stage && Two_Factor::email_fallback_enabled() ) {
 			?>
 			<p style="margin-top:16px;border-top:1px solid #dcdcde;padding-top:16px;">
-				<?php esc_html_e( 'Lost your authenticator?', 'sentinel-security-center' ); ?>
+				<?php esc_html_e( 'Lost your authenticator?', 'vokull-security-center' ); ?>
 				<button type="submit" name="wpsec_send_email" value="1" class="button button-secondary" style="margin-left:6px;">
-					<?php esc_html_e( 'E-mail me a code', 'sentinel-security-center' ); ?>
+					<?php esc_html_e( 'E-mail me a code', 'vokull-security-center' ); ?>
 				</button>
 			</p>
 			<?php
@@ -499,13 +504,13 @@ final class Two_Factor_Login {
 			echo '</div>';
 		}
 
-		echo '<p style="margin:0 0 4px;"><small>' . esc_html__( 'Or type this key into the app:', 'sentinel-security-center' ) . '</small></p>';
+		echo '<p style="margin:0 0 4px;"><small>' . esc_html__( 'Or type this key into the app:', 'vokull-security-center' ) . '</small></p>';
 		echo '<p style="margin:0 0 12px;"><code style="display:block;padding:8px;word-break:break-all;">'
 			. esc_html( Totp::format_secret( $secret ) ) . '</code></p>';
 
 		if ( '' !== $uri ) {
 			echo '<p style="margin:0 0 12px;"><a href="' . esc_url( $uri, [ 'otpauth' ] ) . '">'
-				. esc_html__( 'Open in an authenticator app on this device', 'sentinel-security-center' ) . '</a></p>';
+				. esc_html__( 'Open in an authenticator app on this device', 'vokull-security-center' ) . '</a></p>';
 		}
 	}
 
@@ -516,9 +521,9 @@ final class Two_Factor_Login {
 	 * @param string   $target Where "continue" goes.
 	 */
 	private function render_recovery_codes( array $codes, string $target ): void {
-		$this->page_header( __( 'Save your recovery codes', 'sentinel-security-center' ) );
+		$this->page_header( __( 'Save your recovery codes', 'vokull-security-center' ) );
 
-		echo '<p>' . esc_html__( 'Two-factor authentication is now on. These recovery codes are the way back in if you lose the authenticator. Each one works once. This is the only time they are shown.', 'sentinel-security-center' ) . '</p>';
+		echo '<p>' . esc_html__( 'Two-factor authentication is now on. These recovery codes are the way back in if you lose the authenticator. Each one works once. This is the only time they are shown.', 'vokull-security-center' ) . '</p>';
 		echo '<p><code style="display:block;padding:10px;line-height:1.9;">';
 
 		foreach ( $codes as $code ) {
@@ -527,7 +532,7 @@ final class Two_Factor_Login {
 
 		echo '</code></p>';
 		echo '<p class="submit"><a class="button button-primary button-large" href="' . esc_url( $target ) . '">'
-			. esc_html__( 'I have saved them — continue', 'sentinel-security-center' ) . '</a></p>';
+			. esc_html__( 'I have saved them — continue', 'vokull-security-center' ) . '</a></p>';
 
 		$this->page_footer();
 		exit;

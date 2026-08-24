@@ -1,10 +1,10 @@
-=== Sentinel Security Center ===
+=== Vokull Security Center ===
 Contributors: glogger
 Tags: security, activity log, audit log, two-factor, file integrity
 Requires at least: 6.5
-Tested up to: 7.0
+Tested up to: 7.1
 Requires PHP: 8.1
-Stable tag: 1.6.6
+Stable tag: 1.7.0
 License: GPL-2.0-or-later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -12,7 +12,7 @@ Security monitoring and alerting: plugin, user, role and configuration changes, 
 
 == Description ==
 
-Sentinel Security Center watches the things an attacker actually has to touch in order to keep a foothold in a WordPress site, records them in a searchable log, and e-mails you immediately when something matters.
+Vokull Security Center ("vökull" is Icelandic for "vigilant/watchful") watches the things an attacker actually has to touch in order to keep a foothold in a WordPress site, records them in a searchable log, and e-mails you immediately when something matters.
 
 It is built around two goals that pull against each other: miss as little as possible, and produce as few false alarms as possible. Every event type can be set individually to immediate e-mail, log only, or off. Login blocking always starts in monitor mode so you can see what a rule would have done before you arm it.
 
@@ -53,7 +53,11 @@ Because locking yourself out is the real risk, there are four independent ways b
 
 **Administrator-only**
 
-The plugin adds no front-end output, no REST routes and no shortcodes. Its menu, notices, assets and actions all require the manage_options capability, and a blocked login is indistinguishable from an ordinary wrong password. The one exception is two-factor enrolment: that belongs to the account holder, so the setup screen is reachable by any signed-in user from their own profile — without appearing in the menu for anyone who cannot otherwise see the plugin.
+The plugin adds no front-end output, no REST routes and no shortcodes. Its menu, notices, assets and actions all require the manage_options capability, and a blocked login is indistinguishable from an ordinary wrong password. The one exception is two-factor enrolment: that belongs to the account holder, so every signed-in user finds a Two-factor entry in their own profile menu and can set it up there. Nothing else about the plugin becomes visible to them.
+
+**About the name**
+
+"Vökull" is Icelandic for "vigilant", "watchful". Which is fairly close to the entire job description: watch, and say something the moment it matters.
 
 == External services ==
 
@@ -75,13 +79,13 @@ Used to offer Cloudflare's own address ranges as a ready-made option for the tru
 
 What is sent: nothing beyond the HTTP request. The plugin performs a plain read of the public text files at `https://www.cloudflare.com/ips-v4` and `https://www.cloudflare.com/ips-v6`.
 
-When: when an administrator opens Security Center → Settings → Login & Location. The result is cached for a week, so the request is not repeated on every visit. The ranges are only ever offered as a suggestion — nothing is added to your trusted-proxy list until you click to merge them, and every line is validated as CIDR notation before it is shown.
+When: only when an administrator presses "Fetch Cloudflare's address ranges" under Security Center → Settings → Login & Location. Nothing is requested by opening that screen, or by any other part of the plugin, and there is no scheduled task for it; the stored list is re-read only when you press the button again. Fetching alone changes nothing — the ranges are offered as a suggestion, every line is validated as CIDR notation, and nothing reaches your trusted-proxy list until you separately click to merge them.
 
 Service provided by Cloudflare, Inc. — [website terms of use](https://www.cloudflare.com/website-terms/), [privacy policy](https://www.cloudflare.com/privacypolicy/).
 
 == Installation ==
 
-1. Upload the plugin to `/wp-content/plugins/sentinel-security-center` or install the ZIP from the Plugins screen.
+1. Upload the plugin to `/wp-content/plugins/vokull-security-center` or install the ZIP from the Plugins screen.
 2. Activate it. WordPress Multisite is not supported and activation will stop with an explanation.
 3. Open Security Center → Settings and set your alert recipients.
 4. For country-based rules, add a MaxMind GeoLite2 licence key (free) and download the database, or configure your CDN's country header.
@@ -126,6 +130,15 @@ Not by default. Application passwords and XML-RPC authenticate through the same 
 No. Activation on a network stops with a message rather than misbehaving quietly.
 
 == Changelog ==
+
+= 1.7.0 =
+* Changed: the plugin is now called Vokull Security Center, with the permalink and text domain vokull-security-center. The WordPress.org review flagged "Sentinel" as a name already carried by well-known security products in this same field. Vökull is Icelandic for "vigilant", "watchful" — the name the project has been developed under all along.
+* Changed: what the plugin calls itself on screen is now simply "Security Center" everywhere — the activation and deactivation log entries, the alert e-mail footer, the multisite refusal and the platform guards. The full name is what appears on the Plugins screen and in the directory.
+* Changed: Cloudflare's published address ranges are now fetched only when you press a button on the Login & Location tab. Opening that tab used to read them as a side effect of rendering the page — nothing about the site was ever sent, but a settings screen should not contact a third party on your behalf. There is no scheduled refresh either. Ranges already stored keep working, and merging them into the trusted-proxy list remains a separate click.
+* Fixed: the error message shown when a login is refused by a country rule, or when API authentication is refused for an account with two-factor, was not translatable — it was passed through WordPress' translation function without this plugin's text domain, so it stayed English in every language. The wording is unchanged; it is simply translated now like everything else.
+* Removed: the bundled German translation and the translation template. Translations for a plugin hosted on WordPress.org come from translate.wordpress.org, which delivers them per locale through the ordinary update system; a bundled copy only duplicates that and goes stale against it. The strings themselves are unchanged.
+* Unchanged: your settings, the log and the file and user baselines are all preserved. The option names, database tables and the GeoIP directory under uploads keep their existing prefix and are untouched.
+* Note: as with the previous rename, this one leaves the plugin deactivated, because WordPress reactivates a plugin by the file path it recorded and the main plugin file has been renamed. Activate Vokull Security Center on the Plugins screen and monitoring resumes as before. Until you do, nothing is being monitored.
 
 = 1.6.6 =
 * Added: an "External services" section to this readme, documenting exactly what the MaxMind and Cloudflare requests send, and when. Neither is contacted until you configure it, and neither ever sees anything about your site or your visitors.
@@ -201,6 +214,9 @@ No. Activation on a network stops with a message rather than misbehaving quietly
 * Initial scaffolding release.
 
 == Upgrade Notice ==
+
+= 1.7.0 =
+Sentinel Security Center is now Vokull Security Center. Settings, log and baselines are preserved. One manual step: the main plugin file was renamed, so WordPress leaves the plugin switched off after updating — activate it again on the Plugins screen.
 
 = 1.6.6 =
 Documentation and housekeeping only, with no functional change and nothing to do after updating. The readme now spells out the two external services the plugin can contact, what each request sends, and when.

@@ -174,11 +174,11 @@ final class User_Reconciler {
 		$diff = [];
 
 		$fields = [
-			'user_login'    => __( 'login name', 'sentinel-security-center' ),
-			'user_email'    => __( 'e-mail address', 'sentinel-security-center' ),
-			'user_nicename' => __( 'nicename', 'sentinel-security-center' ),
-			'display_name'  => __( 'display name', 'sentinel-security-center' ),
-			'roles'         => __( 'roles', 'sentinel-security-center' ),
+			'user_login'    => __( 'login name', 'vokull-security-center' ),
+			'user_email'    => __( 'e-mail address', 'vokull-security-center' ),
+			'user_nicename' => __( 'nicename', 'vokull-security-center' ),
+			'display_name'  => __( 'display name', 'vokull-security-center' ),
+			'roles'         => __( 'roles', 'vokull-security-center' ),
 		];
 
 		foreach ( $fields as $field => $label ) {

@@ -239,15 +239,15 @@ final class Event_Registry {
 	public static function severity_label( int $severity ): string {
 		switch ( true ) {
 			case $severity >= self::CRITICAL:
-				return __( 'Critical', 'sentinel-security-center' );
+				return __( 'Critical', 'vokull-security-center' );
 			case $severity >= self::HIGH:
-				return __( 'High', 'sentinel-security-center' );
+				return __( 'High', 'vokull-security-center' );
 			case $severity >= self::WARNING:
-				return __( 'Warning', 'sentinel-security-center' );
+				return __( 'Warning', 'vokull-security-center' );
 			case $severity >= self::NOTICE:
-				return __( 'Notice', 'sentinel-security-center' );
+				return __( 'Notice', 'vokull-security-center' );
 			default:
-				return __( 'Info', 'sentinel-security-center' );
+				return __( 'Info', 'vokull-security-center' );
 		}
 	}
 
@@ -258,15 +258,15 @@ final class Event_Registry {
 	 */
 	public static function groups(): array {
 		return [
-			'plugins'   => __( 'Plugins', 'sentinel-security-center' ),
-			'themes'    => __( 'Themes', 'sentinel-security-center' ),
-			'users'     => __( 'Users & administrators', 'sentinel-security-center' ),
-			'apppass'   => __( 'Application passwords', 'sentinel-security-center' ),
-			'login'     => __( 'Logins', 'sentinel-security-center' ),
-			'twofactor' => __( 'Two-factor authentication', 'sentinel-security-center' ),
-			'config'    => __( 'Configuration', 'sentinel-security-center' ),
-			'files'     => __( 'Files & integrity', 'sentinel-security-center' ),
-			'system'    => __( 'Plugin status', 'sentinel-security-center' ),
+			'plugins'   => __( 'Plugins', 'vokull-security-center' ),
+			'themes'    => __( 'Themes', 'vokull-security-center' ),
+			'users'     => __( 'Users & administrators', 'vokull-security-center' ),
+			'apppass'   => __( 'Application passwords', 'vokull-security-center' ),
+			'login'     => __( 'Logins', 'vokull-security-center' ),
+			'twofactor' => __( 'Two-factor authentication', 'vokull-security-center' ),
+			'config'    => __( 'Configuration', 'vokull-security-center' ),
+			'files'     => __( 'Files & integrity', 'vokull-security-center' ),
+			'system'    => __( 'Plugin status', 'vokull-security-center' ),
 		];
 	}
 }

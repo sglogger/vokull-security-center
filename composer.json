@@ -1,6 +1,6 @@
 {
-	"name": "sglogger/sentinel-security-center",
-	"description": "Security monitoring and alerting for WordPress: plugin/theme changes, administrator and role changes, configuration changes, filesystem integrity, two-factor authentication and geo-aware login control.",
+	"name": "sglogger/vokull-security-center",
+	"description": "Security monitoring and alerting for WordPress: plugin/theme changes, administrator and role changes, configuration changes, filesystem integrity, two-factor authentication and geo-aware login control. There is no PRO version. All free.",
 	"type": "wordpress-plugin",
 	"license": "GPL-2.0-or-later",
 	"authors": [

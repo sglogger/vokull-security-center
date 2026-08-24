@@ -52,7 +52,7 @@ final class Logger {
 			if ( defined( 'WP_DEBUG' ) && WP_DEBUG ) {
 				// phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_trigger_error -- not debug output: a typo in an event name would otherwise be a silent no-op that hides a real security event. Raised only under WP_DEBUG, so a production site never sees it.
 				trigger_error(
-					esc_html( 'Sentinel Security Center: unknown event type "' . $type . '"' ),
+					esc_html( 'Security Center: unknown event type "' . $type . '"' ),
 					E_USER_WARNING
 				);
 			}

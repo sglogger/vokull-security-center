@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to Sentinel Security Center are documented here.
+All notable changes to Vokull Security Center are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
@@ -8,6 +8,92 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 When a release goes out, the same summary must also be added to the
 `== Changelog ==` section of `readme.txt` — that is what WordPress shows in the
 plugin details modal.
+
+## [1.7.0] - 2026-08-24
+
+### Changed
+
+- **The plugin is now called Vokull Security Center.** The WordPress.org plugin
+  review flagged "Sentinel" as a name that is already carried by well-known
+  security products — Microsoft Sentinel among them — in exactly this field, so
+  a plugin opening with it invites the assumption that it is one of theirs. The
+  project has been developed under the name *Vökull* — Icelandic for "vigilant",
+  "watchful" — from the start, so the name it now ships under is the one it
+  already had. The reserved permalink is `vokull-security-center`; the text
+  domain and the main plugin file were renamed to match, as were the admin page
+  slugs and the plugin icon assets.
+
+  Nothing you have configured is lost. Option names, hook names, the database
+  tables and the GeoIP directory under `uploads/` all keep their `wpsec` prefix
+  and are untouched, so settings, the log, the file and user baselines and any
+  downloaded GeoIP database survive the rename unchanged.
+
+  **Upgrading an existing install needs one manual step**, for the same reason
+  1.4.0 did: WordPress reactivates a plugin by the path it recorded, and that
+  path — the old main file — no longer exists, so the plugin is left switched
+  off. Activate Vokull Security Center on the Plugins screen and monitoring
+  resumes with your existing settings and baselines. Until you do, nothing is
+  being monitored. First-time installs are unaffected.
+
+- **Everything the plugin says at runtime now calls itself "Security Center".**
+  The admin menu already did; the activation and deactivation log entries, the
+  alert e-mail footer, the multisite refusal and the two platform guards did
+  not, and named the whole product where the short name reads better. The
+  distributed name — the one on the Plugins screen and in the directory — is
+  the full "Vokull Security Center".
+
+- **The Description explains the name.** `("vökull" is Icelandic for
+  "vigilant/watchful")` now travels with the plugin header and the readme,
+  where a reader meets the word for the first time.
+
+- **Cloudflare's address ranges are fetched on request, not on sight.** Opening
+  Settings → Login & Location used to read `cloudflare.com/ips-v4` and `ips-v6`
+  as a side effect of rendering the page, refreshing weekly. Nothing about the
+  site was sent and the result was only ever a suggestion — but a settings
+  screen must not send a request to a third party on the reader's behalf, and
+  WordPress.org is right to call that phoning home. The tab now shows a "Fetch
+  Cloudflare's address ranges" button and does nothing at all until it is
+  pressed; the request lives in `Cloudflare_Ranges::refresh()`, which is
+  reachable from that one action and from nowhere else. There is no scheduled
+  task and no refresh-on-render: a stored list that has aged past a week says
+  so and offers the button again, rather than acting on its own.
+
+  Fetching still adds nothing to the trusted-proxy list. That remains a second,
+  separate click, because every address in a trusted proxy range can dictate
+  the client IP the login rules are applied to.
+
+  On an existing install nothing is lost: the ranges already stored keep
+  working and the preset is offered from them as before.
+
+- **Two login errors are translatable again.** The message a refused login
+  shows — for a country rule, and for API authentication against an account
+  with two factors — was passed through `__()` with no text domain at all,
+  which means WordPress looked it up in its own catalogue. The comment above it
+  claimed the wording was byte-identical to what core says for a wrong
+  password, and that turned out not to be true: core names the user and appends
+  a "Lost your password?" link, and this exact sentence appears nowhere in
+  WordPress. So the string was never going to be found in core's catalogue, and
+  rendered in English in every locale while achieving none of the matching it
+  was written for.
+
+  It now carries this plugin's text domain like every other string, so it is
+  translated through the same channel as the rest. The wording is unchanged and
+  still names no reason for the refusal — which is the disclosure that actually
+  matters — and the comments no longer claim a resemblance to core that is not
+  there.
+
+### Removed
+
+- **The bundled translation catalogues.** `languages/` held a `.pot` and a
+  complete German `.po`, compiled to `.mo` at release time. A plugin hosted on
+  WordPress.org is translated at translate.wordpress.org instead, which
+  generates a catalogue for every locale and delivers it through the ordinary
+  update system — so a bundled copy only duplicates that, and goes stale
+  against it. The strings are unchanged and still fully internationalised; the
+  German translation returns through the standard channel. Both the local
+  packaging script and the release workflow now refuse to put a `.po`, `.pot`
+  or `.mo` into the ZIP at all, and the now-pointless `Domain Path` header is
+  gone.
 
 ## [1.6.6] - 2026-08-18
 
@@ -493,7 +579,8 @@ GitHub Releases self-updater, CI and the local development environment.
   as though it were a valid release, producing a fatal error on the Plugins
   screen. Affects any repository without a published release.
 
-[1.4.0]: https://github.com/sglogger/sentinel-security-center/releases/tag/v1.4.0
-[1.1.1]: https://github.com/sglogger/sentinel-security-center/releases/tag/v1.1.1
-[1.1.0]: https://github.com/sglogger/sentinel-security-center/releases/tag/v1.1.0
-[1.0.0]: https://github.com/sglogger/sentinel-security-center/releases/tag/v1.0.0
+[1.7.0]: https://github.com/sglogger/vokull-security-center/releases/tag/v1.7.0
+[1.4.0]: https://github.com/sglogger/vokull-security-center/releases/tag/v1.4.0
+[1.1.1]: https://github.com/sglogger/vokull-security-center/releases/tag/v1.1.1
+[1.1.0]: https://github.com/sglogger/vokull-security-center/releases/tag/v1.1.0
+[1.0.0]: https://github.com/sglogger/vokull-security-center/releases/tag/v1.0.0

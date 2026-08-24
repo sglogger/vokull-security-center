@@ -4,7 +4,7 @@ on:
   push:
     branches: [main]
     paths:
-      - sentinel-security-center.php
+      - vokull-security-center.php
       - composer.lock
   workflow_dispatch:
 
@@ -26,11 +26,11 @@ jobs:
       - name: Read and cross-check version
         id: ver
         run: |
-          HEADER=$(grep -E '^\s*\*\s*Version:' sentinel-security-center.php | head -n1 | awk -F: '{print $2}' | xargs)
-          CONST=$(grep -E "define\(\s*'WPSEC_VERSION'" sentinel-security-center.php | sed -E "s/.*'([0-9.]+)'.*/\1/")
+          HEADER=$(grep -E '^\s*\*\s*Version:' vokull-security-center.php | head -n1 | awk -F: '{print $2}' | xargs)
+          CONST=$(grep -E "define\(\s*'WPSEC_VERSION'" vokull-security-center.php | sed -E "s/.*'([0-9.]+)'.*/\1/")
           STABLE=$(grep -E '^Stable tag:' readme.txt | awk -F: '{print $2}' | xargs)
           if [ -z "$HEADER" ]; then
-            echo "::error::Could not find Version header in sentinel-security-center.php"
+            echo "::error::Could not find Version header in vokull-security-center.php"
             exit 1
           fi
           if [ "$HEADER" != "$CONST" ]; then
@@ -85,15 +85,6 @@ jobs:
             fi
           done
 
-      - name: Compile translations
-        run: |
-          if ls languages/*.po >/dev/null 2>&1; then
-            sudo apt-get update -qq && sudo apt-get install -y -qq gettext
-            for po in languages/*.po; do
-              msgfmt "$po" -o "${po%.po}.mo"
-            done
-          fi
-
       # Deliberately an ALLOW list, not an exclude list. With excludes, every
       # file added to the repo later (a doc, a scratch script, a new tool
       # config) silently ends up in the shipped plugin. With an allow list it
@@ -105,7 +96,7 @@ jobs:
       # and composer.json, which describes the vendor/ tree that ships with it.
       - name: Stage plugin files
         run: |
-          SLUG=sentinel-security-center
+          SLUG=vokull-security-center
           STAGE="$RUNNER_TEMP/$SLUG"
           rm -rf "$STAGE"
           mkdir -p "$STAGE"
@@ -116,7 +107,7 @@ jobs:
           # composer.json is missing. composer.lock stays out: it pins dev
           # packages that are not in the ZIP.
           for path in \
-            sentinel-security-center.php \
+            vokull-security-center.php \
             uninstall.php \
             index.php \
             readme.txt \
@@ -127,7 +118,7 @@ jobs:
             cp "$path" "$STAGE/"
           done
 
-          for dir in includes admin assets languages vendor; do
+          for dir in includes admin assets vendor; do
             test -d "$dir" || { echo "::error::required directory $dir is missing"; exit 1; }
             cp -a "$dir" "$STAGE/"
           done
@@ -138,7 +129,7 @@ jobs:
             \( -name tests -o -name test -o -name doc -o -name docs \
                -o -name examples -o -name .github -o -name bin \) \
             -prune -exec rm -rf {} + 2>/dev/null || true
-          find "$STAGE" \( -name '*.md' -o -name '*.po' -o -name '.DS_Store' \
+          find "$STAGE" \( -name '*.md' -o -name '*.po' -o -name '*.pot' -o -name '.DS_Store' \
                            -o -name '.gitignore' -o -name '.gitattributes' \
                            -o -name 'phpunit.xml*' -o -name '.editorconfig' \) \
             -delete 2>/dev/null || true
@@ -153,14 +144,14 @@ jobs:
       # release rather than publish it.
       - name: Verify nothing unwanted was staged
         run: |
-          SLUG=sentinel-security-center
+          SLUG=vokull-security-center
           STAGE="$RUNNER_TEMP/$SLUG"
 
           echo "--- staged tree (excluding vendor internals) ---"
           find "$STAGE" -not -path '*/vendor/*/*' | sort
 
           # Never acceptable anywhere in the package.
-          ANYWHERE='docker-compose|CLAUDE\.md|/\.env|local_wp_core|db_data|node_modules|/\.git|/tests?/|/steven/|\.po$|\.zip$'
+          ANYWHERE='docker-compose|CLAUDE\.md|/\.env|local_wp_core|db_data|node_modules|/\.git|/tests?/|/steven/|\.pot?$|\.mo$|\.zip$'
           if find "$STAGE" | grep -Ei "$ANYWHERE"; then
             echo "::error::development files found in the staged plugin (listed above)"
             exit 1
@@ -185,7 +176,7 @@ jobs:
 
           # A WordPress plugin is identified by its header; without this the
           # ZIP is not installable at all.
-          grep -q '^\s*\*\s*Plugin Name:' "$STAGE/sentinel-security-center.php" \
+          grep -q '^\s*\*\s*Plugin Name:' "$STAGE/vokull-security-center.php" \
             || { echo "::error::plugin header missing from the staged bootstrap"; exit 1; }
 
           test -f "$STAGE/vendor/autoload.php" || { echo "::error::vendor/autoload.php missing from the staged plugin"; exit 1; }
@@ -196,7 +187,7 @@ jobs:
 
       - name: Build plugin ZIP
         run: |
-          SLUG=sentinel-security-center
+          SLUG=vokull-security-center
           cd "$RUNNER_TEMP"
           zip -rq "$GITHUB_WORKSPACE/$SLUG.zip" "$SLUG"
           unzip -l "$GITHUB_WORKSPACE/$SLUG.zip" | tail -1
@@ -227,7 +218,7 @@ jobs:
         uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ steps.ver.outputs.tag }}
-          files: sentinel-security-center.zip
+          files: vokull-security-center.zip
           body_path: release-notes.md
           generate_release_notes: true
           fail_on_unmatched_files: true

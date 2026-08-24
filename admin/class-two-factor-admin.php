@@ -4,9 +4,9 @@
  *
  * Enrolment cannot live behind `manage_options` the way the rest of this
  * plugin does — the person enrolling is the account holder, whoever they are.
- * The setup page is therefore registered with the `read` capability but hidden
- * from the menu for anyone who cannot see the plugin, so it stays reachable
- * without becoming visible.
+ * The setup page is therefore registered with the `read` capability and hangs
+ * off the profile menu, which every signed-in user has, rather than off the
+ * plugin menu, which only administrators can see.
  *
  * @package WPSecurityCenter
  */
@@ -21,9 +21,19 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 final class Two_Factor_Admin {
 
-	public const PAGE = 'sentinel-security-center-2fa';
+	public const PAGE = 'vokull-security-center-2fa';
 
 	private const NONCE = 'wpsec_2fa';
+
+	/**
+	 * Parent menu for the personal entry.
+	 *
+	 * WordPress rewrites this slug to `users.php` for anyone who may list
+	 * users and leaves it pointing at the top-level "Profile" menu for
+	 * everyone else, so registering once puts the entry in the right place
+	 * for every role.
+	 */
+	private const PROFILE_PARENT = 'profile.php';
 
 	public function register(): void {
 		add_action( 'admin_menu', [ $this, 'add_page' ], 20 );
@@ -36,21 +46,58 @@ final class Two_Factor_Admin {
 	}
 
 	public function add_page(): void {
-		$page = add_submenu_page(
-			Admin::MENU_LOG,
-			__( 'Two-factor authentication', 'sentinel-security-center' ),
-			__( 'Two-factor', 'sentinel-security-center' ),
+		$is_admin = current_user_can( Admin::CAP );
+
+		// Administrators keep the screen inside the plugin menu, next to the
+		// two-factor policy they administer.
+		if ( $is_admin ) {
+			add_submenu_page(
+				Admin::MENU_LOG,
+				__( 'Two-factor authentication', 'vokull-security-center' ),
+				__( 'Two-factor', 'vokull-security-center' ),
+				'read',
+				self::PAGE,
+				[ $this, 'render' ]
+			);
+		}
+
+		// Nobody is offered a personal entry for a feature this installation
+		// cannot use. An administrator still reaches the screen through the
+		// plugin menu, where it explains why it is unavailable.
+		if ( ! Two_Factor::is_available() ) {
+			return;
+		}
+
+		if ( $is_admin ) {
+			// A link rather than a second registration of the same screen: the
+			// page stays owned by the plugin menu, which keeps the highlight
+			// and the breadcrumbs where an administrator expects them.
+			add_submenu_page(
+				self::PROFILE_PARENT,
+				__( 'Two-factor authentication', 'vokull-security-center' ),
+				__( 'Two-factor', 'vokull-security-center' ),
+				'read',
+				'admin.php?page=' . self::PAGE
+			);
+
+			return;
+		}
+
+		// For everyone else this registration *is* the page. It has to hang off
+		// a menu they can actually reach: WordPress derives the hook name it
+		// looks up on the way in from the parent it can still find, so a page
+		// parented to the plugin menu and then hidden with
+		// remove_submenu_page() resolves to a hook name that was never
+		// registered, and every visit ends in "you are not allowed to access
+		// this page".
+		add_submenu_page(
+			self::PROFILE_PARENT,
+			__( 'Two-factor authentication', 'vokull-security-center' ),
+			__( 'Two-factor', 'vokull-security-center' ),
 			'read',
 			self::PAGE,
 			[ $this, 'render' ]
 		);
-
-		// A user who cannot see the plugin must not see a menu entry for it
-		// either — but the page itself stays routable so their profile can
-		// link to it.
-		if ( $page && ! current_user_can( Admin::CAP ) ) {
-			remove_submenu_page( Admin::MENU_LOG, self::PAGE );
-		}
 	}
 
 	public static function url(): string {
@@ -246,10 +293,10 @@ final class Two_Factor_Admin {
 		$notice = isset( $_GET['wpsec_2fa_notice'] ) ? sanitize_key( wp_unslash( (string) $_GET['wpsec_2fa_notice'] ) ) : '';
 
 		$messages = [
-			'enabled'  => [ 'success', __( 'Two-factor authentication is on. Save the recovery codes below.', 'sentinel-security-center' ) ],
-			'disabled' => [ 'warning', __( 'Two-factor authentication has been switched off for your account.', 'sentinel-security-center' ) ],
-			'codes'    => [ 'success', __( 'New recovery codes generated. The previous set no longer works.', 'sentinel-security-center' ) ],
-			'bad_code' => [ 'error', __( 'That code was not right. Make sure the phone clock is correct and try the code showing now.', 'sentinel-security-center' ) ],
+			'enabled'  => [ 'success', __( 'Two-factor authentication is on. Save the recovery codes below.', 'vokull-security-center' ) ],
+			'disabled' => [ 'warning', __( 'Two-factor authentication has been switched off for your account.', 'vokull-security-center' ) ],
+			'codes'    => [ 'success', __( 'New recovery codes generated. The previous set no longer works.', 'vokull-security-center' ) ],
+			'bad_code' => [ 'error', __( 'That code was not right. Make sure the phone clock is correct and try the code showing now.', 'vokull-security-center' ) ],
 		];
 
 		if ( ! isset( $messages[ $notice ] ) ) {
@@ -278,38 +325,38 @@ final class Two_Factor_Admin {
 		$own    = get_current_user_id() === (int) $user->ID;
 		$active = Two_Factor::is_active_for( (int) $user->ID );
 
-		echo '<h2>' . esc_html__( 'Two-factor authentication', 'sentinel-security-center' ) . '</h2>';
+		echo '<h2>' . esc_html__( 'Two-factor authentication', 'vokull-security-center' ) . '</h2>';
 		echo '<table class="form-table" role="presentation"><tr>';
-		echo '<th scope="row">' . esc_html__( 'Status', 'sentinel-security-center' ) . '</th><td>';
+		echo '<th scope="row">' . esc_html__( 'Status', 'vokull-security-center' ) . '</th><td>';
 
 		if ( $active ) {
 			printf(
 				'<p><strong>%s</strong> %s</p>',
-				esc_html__( 'On.', 'sentinel-security-center' ),
+				esc_html__( 'On.', 'vokull-security-center' ),
 				esc_html(
 					sprintf(
 						/* translators: %d: number of unused recovery codes */
-						_n( '%d unused recovery code remains.', '%d unused recovery codes remain.', Two_Factor::recovery_codes_left( (int) $user->ID ), 'sentinel-security-center' ),
+						_n( '%d unused recovery code remains.', '%d unused recovery codes remain.', Two_Factor::recovery_codes_left( (int) $user->ID ), 'vokull-security-center' ),
 						Two_Factor::recovery_codes_left( (int) $user->ID )
 					)
 				)
 			);
 		} else {
-			echo '<p><strong>' . esc_html__( 'Off.', 'sentinel-security-center' ) . '</strong> '
-				. esc_html__( 'A stolen password is enough to sign in to this account.', 'sentinel-security-center' ) . '</p>';
+			echo '<p><strong>' . esc_html__( 'Off.', 'vokull-security-center' ) . '</strong> '
+				. esc_html__( 'A stolen password is enough to sign in to this account.', 'vokull-security-center' ) . '</p>';
 		}
 
 		if ( $own ) {
 			printf(
 				'<p><a class="button" href="%s">%s</a></p>',
 				esc_url( self::url() ),
-				esc_html( $active ? __( 'Manage two-factor authentication', 'sentinel-security-center' ) : __( 'Set up two-factor authentication', 'sentinel-security-center' ) )
+				esc_html( $active ? __( 'Manage two-factor authentication', 'vokull-security-center' ) : __( 'Set up two-factor authentication', 'vokull-security-center' ) )
 			);
 		} elseif ( $active && current_user_can( 'edit_user', (int) $user->ID ) ) {
 			echo '<p><label><input type="checkbox" name="wpsec_2fa_reset" value="1"> '
-				. esc_html__( 'Reset two-factor authentication for this user', 'sentinel-security-center' ) . '</label><br>'
+				. esc_html__( 'Reset two-factor authentication for this user', 'vokull-security-center' ) . '</label><br>'
 				. '<span class="description">'
-				. esc_html__( 'Use this when they have lost the authenticator, the recovery codes and access to their mailbox. They will have to set it up again, and the reset is recorded in the event log.', 'sentinel-security-center' )
+				. esc_html__( 'Use this when they have lost the authenticator, the recovery codes and access to their mailbox. They will have to set it up again, and the reset is recorded in the event log.', 'vokull-security-center' )
 				. '</span></p>';
 		}
 
@@ -337,13 +384,13 @@ final class Two_Factor_Admin {
 						'This site requires administrators to use two-factor authentication. You have %d day left to set it up before you cannot sign in without it.',
 						'This site requires administrators to use two-factor authentication. You have %d days left to set it up before you cannot sign in without it.',
 						$days,
-						'sentinel-security-center'
+						'vokull-security-center'
 					),
 					$days
 				)
 			),
 			esc_url( self::url() ),
-			esc_html__( 'Set it up now', 'sentinel-security-center' )
+			esc_html__( 'Set it up now', 'vokull-security-center' )
 		);
 	}
 }

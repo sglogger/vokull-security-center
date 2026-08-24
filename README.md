@@ -1,14 +1,18 @@
-# Sentinel Security Center
+# Vokull Security Center
 
 Security monitoring and alerting for WordPress. It watches what an attacker has
 to touch in order to keep a foothold — plugins, themes, administrators, roles,
 configuration, files, and where logins come from — records it in a searchable
-log, and e-mails you immediately when it matters.
+log, and e-mails you immediately when it matters. There is no PRO version. All free.
 
 Distributed through wordpress.org. The plugin ships no updater of its own —
 updates arrive the ordinary way, through WordPress.
 
 **Status:** feature complete as of 1.1.0. See [CHANGELOG.md](CHANGELOG.md).
+
+**About the name:** *vökull* is Icelandic for "vigilant", "watchful". Which is
+fairly close to the entire job description: watch, and say something the moment
+it matters.
 
 ---
 
@@ -170,9 +174,17 @@ How it holds together:
 
 <a href="screenshots/2FA.png"><img src="screenshots/2FA.png" alt="Security Center &rarr; Two-factor enrolment" width="600"></a>
 
-Enrolment under **Security Center → Two-factor**: the QR code is rendered on the
-server, the same secret is offered as a typed key, and step 2 will not switch
-anything on until a code from the app is accepted.
+Enrolment under **Security Center → Two-factor** for administrators, and under
+**Users → Two-factor** (or **Profile → Two-factor**, for roles that cannot list
+users) for everyone else — the same screen either way. The QR code is rendered
+on the server, the same secret is offered as a typed key, and step 2 will not
+switch anything on until a code from the app is accepted.
+
+Enrolment is the one part of the plugin that is not gated on `manage_options`:
+the account holder owns their own second factor. The screen is therefore
+registered against the profile menu, which every signed-in user has, rather
+than against the plugin menu, which only administrators can see. Nothing else
+about the plugin becomes visible to them.
 
 ### If the authenticator is lost
 
@@ -312,14 +324,14 @@ edits are live with no build step.
 docker compose exec wpcli wp core install --url=http://localhost:9090 \
   --title="WPSec Dev" --admin_user=admin --admin_password=admin123 \
   --admin_email=admin@example.test --skip-email
-docker compose exec wpcli wp plugin activate sentinel-security-center
+docker compose exec wpcli wp plugin activate vokull-security-center
 
 # Useful during development
 docker compose exec wpcli wp user create eve eve@example.test --role=subscriber
 docker compose exec wpcli wp user set-role eve administrator
 docker compose exec wpcli wp cron event run wpsec_user_scan
 docker compose exec wpcli wp db tables --all-tables-with-prefix | grep wpsec
-docker compose exec wordpress php -l wp-content/plugins/sentinel-security-center/includes/class-logger.php
+docker compose exec wordpress php -l wp-content/plugins/vokull-security-center/includes/class-logger.php
 ```
 
 Note that `wp db tables` **without** `--all-tables-with-prefix` lists only
@@ -359,11 +371,11 @@ exactly that reason.
 - `declare( strict_types = 1 );` in every file, then the namespace, then the
   `ABSPATH` guard.
 - Namespace `WPSecurityCenter`. Constants `WPSEC_*`, options, hooks and tables
-  `wpsec_*`. Text domain `sentinel-security-center`.
+  `wpsec_*`. Text domain `vokull-security-center`.
 - `final class Under_Score` in `class-kebab-case.php`, WordPress core style.
 - Every component exposes `register(): void` that does nothing but add hooks.
   Nothing happens at file-load time.
-- **No autoloader in production.** `sentinel-security-center.php` holds an explicit
+- **No autoloader in production.** `vokull-security-center.php` holds an explicit
   `require_once` list in dependency order. Composer's autoloader is pulled in
   lazily, only for the MaxMind reader, and a missing `vendor/` must degrade
   gracefully rather than fatal.
@@ -374,8 +386,8 @@ exactly that reason.
 
 The version lives in three places and CI fails the build if they disagree:
 
-1. `sentinel-security-center.php` — the `Version:` header
-2. `sentinel-security-center.php` — `define( 'WPSEC_VERSION', ... )`
+1. `vokull-security-center.php` — the `Version:` header
+2. `vokull-security-center.php` — `define( 'WPSEC_VERSION', ... )`
 3. `readme.txt` — `Stable tag:`
 
 Add the release notes to both [CHANGELOG.md](CHANGELOG.md) and the
@@ -389,25 +401,24 @@ git push origin main
 
 `.github/workflows/auto-tag.yml` takes it from there: it cross-checks the three
 versions, tags, installs runtime dependencies with `--no-dev`, asserts no dev
-package leaked into `vendor/`, compiles the `.po` files, builds the ZIP and
+package leaked into `vendor/`, builds the ZIP and
 publishes the GitHub release. The plugin carries no updater of its own: updates
 reach sites through WordPress.org once the release is published there.
 
 ## Translations
 
-Source strings are English. A complete German translation ships in
-`languages/`. To regenerate after changing strings:
+Source strings are English, wrapped in the gettext functions under the
+`vokull-security-center` text domain. No catalogues are bundled: a plugin
+hosted on WordPress.org is translated at
+[translate.wordpress.org](https://translate.wordpress.org/), which generates a
+`.mo` per locale and delivers it through the ordinary update system. Shipping
+`.po`/`.mo` files alongside that only duplicates it, so the build refuses to
+put any into the ZIP.
 
-```sh
-docker compose exec wpcli wp i18n make-pot wp-content/plugins/sentinel-security-center \
-  wp-content/plugins/sentinel-security-center/languages/sentinel-security-center.pot \
-  --exclude=vendor,tests,dev,local_wp_core --slug=sentinel-security-center
-docker compose exec wpcli sh -c 'cd /var/www/html/wp-content/plugins/sentinel-security-center \
-  && wp i18n make-mo languages/ languages/'
-```
-
-Only the `.po` is tracked; the release workflow compiles the `.mo` so the two
-can never drift apart.
+What that asks of the code is that every string is a literal — never a
+variable, a constant or a concatenation — in both the text and the text-domain
+argument, since the translation parser reads the source without running it. Use
+`printf` with a placeholder and a `translators:` comment for anything dynamic.
 
 ## Licence
 

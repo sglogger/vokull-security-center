@@ -152,7 +152,7 @@ final class Geoip_Database {
 		$key = self::license_key();
 
 		if ( '' === $key ) {
-			$state['last_error'] = __( 'No MaxMind licence key is configured.', 'sentinel-security-center' );
+			$state['last_error'] = __( 'No MaxMind licence key is configured.', 'vokull-security-center' );
 			update_option( Installer::OPTION_GEOIP_STATE, $state, false );
 
 			return new \WP_Error( 'wpsec_geoip_no_key', $state['last_error'] );
@@ -161,7 +161,7 @@ final class Geoip_Database {
 		$dir = self::directory();
 
 		if ( '' === $dir ) {
-			$state['last_error'] = __( 'The uploads directory is not writable.', 'sentinel-security-center' );
+			$state['last_error'] = __( 'The uploads directory is not writable.', 'vokull-security-center' );
 			update_option( Installer::OPTION_GEOIP_STATE, $state, false );
 
 			return new \WP_Error( 'wpsec_geoip_no_dir', $state['last_error'] );
@@ -212,7 +212,7 @@ final class Geoip_Database {
 
 			if ( is_string( $expected ) && '' !== $expected && ! hash_equals( $expected, (string) $actual ) ) {
 				wp_delete_file( $tmp );
-				return self::fail( $state, __( 'The downloaded database failed its checksum verification.', 'sentinel-security-center' ) );
+				return self::fail( $state, __( 'The downloaded database failed its checksum verification.', 'vokull-security-center' ) );
 			}
 		}
 
@@ -230,7 +230,7 @@ final class Geoip_Database {
 
 		if ( ! self::looks_valid( $staged ) ) {
 			wp_delete_file( $staged );
-			return self::fail( $state, __( 'The extracted file does not look like a MaxMind database.', 'sentinel-security-center' ) );
+			return self::fail( $state, __( 'The extracted file does not look like a MaxMind database.', 'vokull-security-center' ) );
 		}
 
 		$live = $dir . self::FILE;
@@ -238,7 +238,7 @@ final class Geoip_Database {
 		// phpcs:ignore WordPress.WP.AlternativeFunctions.rename_rename, WordPress.PHP.NoSilencedErrors -- rename() within one filesystem is atomic, which is the whole point here: a login looking up a country while this runs must see either the old database or the new one, never a half-written file. WP_Filesystem::move() gives no such guarantee and is not initialised during cron, which is when this runs.
 		if ( ! @rename( $staged, $live ) ) {
 			wp_delete_file( $staged );
-			return self::fail( $state, __( 'The new database could not replace the existing one.', 'sentinel-security-center' ) );
+			return self::fail( $state, __( 'The new database could not replace the existing one.', 'vokull-security-center' ) );
 		}
 
 		$state['path']         = $live;
@@ -275,12 +275,12 @@ final class Geoip_Database {
 		$code = (int) wp_remote_retrieve_response_code( $response );
 
 		if ( 401 === $code || 403 === $code ) {
-			return __( 'MaxMind rejected the licence key.', 'sentinel-security-center' );
+			return __( 'MaxMind rejected the licence key.', 'vokull-security-center' );
 		}
 
 		if ( 200 !== $code ) {
 			/* translators: %d: HTTP status code */
-			return sprintf( __( 'MaxMind returned HTTP %d.', 'sentinel-security-center' ), $code );
+			return sprintf( __( 'MaxMind returned HTTP %d.', 'vokull-security-center' ), $code );
 		}
 
 		return null;

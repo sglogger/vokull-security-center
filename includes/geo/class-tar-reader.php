@@ -32,21 +32,21 @@ final class Tar_Reader {
 	 */
 	public static function extract_member( string $archive, string $suffix, string $target ) {
 		if ( ! is_readable( $archive ) ) {
-			return new \WP_Error( 'wpsec_tar_unreadable', __( 'The downloaded archive could not be read.', 'sentinel-security-center' ) );
+			return new \WP_Error( 'wpsec_tar_unreadable', __( 'The downloaded archive could not be read.', 'vokull-security-center' ) );
 		}
 
 		// phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents -- reading a local temporary file we just downloaded, not a remote resource.
 		$raw = file_get_contents( $archive );
 
 		if ( false === $raw || '' === $raw ) {
-			return new \WP_Error( 'wpsec_tar_empty', __( 'The downloaded archive was empty.', 'sentinel-security-center' ) );
+			return new \WP_Error( 'wpsec_tar_empty', __( 'The downloaded archive was empty.', 'vokull-security-center' ) );
 		}
 
 		// phpcs:ignore WordPress.PHP.NoSilencedErrors -- gzdecode() warns on anything that is not gzip, and a truncated or error-page download is exactly what we are testing for. The false return becomes the WP_Error below.
 		$tar = @gzdecode( $raw );
 
 		if ( false === $tar ) {
-			return new \WP_Error( 'wpsec_tar_gzip', __( 'The downloaded archive is not valid gzip data.', 'sentinel-security-center' ) );
+			return new \WP_Error( 'wpsec_tar_gzip', __( 'The downloaded archive is not valid gzip data.', 'vokull-security-center' ) );
 		}
 
 		unset( $raw );
@@ -74,7 +74,7 @@ final class Tar_Reader {
 			if ( str_contains( $name, '..' ) || str_starts_with( $name, '/' ) ) {
 				return new \WP_Error(
 					'wpsec_tar_traversal',
-					__( 'The archive contains an unsafe file path and was rejected.', 'sentinel-security-center' )
+					__( 'The archive contains an unsafe file path and was rejected.', 'vokull-security-center' )
 				);
 			}
 
@@ -83,14 +83,14 @@ final class Tar_Reader {
 			// '0' and "\0" are regular files; anything else is skipped.
 			if ( ( '0' === $type || "\0" === $type ) && str_ends_with( $name, $suffix ) ) {
 				if ( $offset + $size > $length ) {
-					return new \WP_Error( 'wpsec_tar_truncated', __( 'The downloaded archive is truncated.', 'sentinel-security-center' ) );
+					return new \WP_Error( 'wpsec_tar_truncated', __( 'The downloaded archive is truncated.', 'vokull-security-center' ) );
 				}
 
 				$content = substr( $tar, $offset, $size );
 
 				// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_file_put_contents -- writing to our own private directory; WP_Filesystem is not initialised during cron.
 				if ( false === file_put_contents( $target, $content ) ) {
-					return new \WP_Error( 'wpsec_tar_write', __( 'The extracted database could not be written to disk.', 'sentinel-security-center' ) );
+					return new \WP_Error( 'wpsec_tar_write', __( 'The extracted database could not be written to disk.', 'vokull-security-center' ) );
 				}
 
 				return true;
@@ -101,7 +101,7 @@ final class Tar_Reader {
 
 		return new \WP_Error(
 			'wpsec_tar_not_found',
-			__( 'The archive did not contain the expected database file.', 'sentinel-security-center' )
+			__( 'The archive did not contain the expected database file.', 'vokull-security-center' )
 		);
 	}
 }
