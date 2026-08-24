@@ -1,17 +1,16 @@
 <?php
 /**
- * Plugin Name:       Sentinel Security Center
- * Plugin URI:        https://github.com/sglogger/sentinel-security-center
- * Description:       Security monitoring and alerting for WordPress. Logs and alerts on plugin/theme changes, administrator and role changes, configuration changes, filesystem integrity and logins from countries outside your allow list — with optional login blocking and two-factor authentication. Administrator-only, with immediate e-mail alerts.
- * Version:           1.6.6
+ * Plugin Name:       Vokull Security Center
+ * Plugin URI:        https://github.com/sglogger/vokull-security-center
+ * Description:       Security monitoring and alerting for WordPress ("vökull" is Icelandic for "vigilant/watchful"). Logs and alerts on plugin/theme changes, administrator and role changes, configuration changes, filesystem integrity and logins from countries outside your allow list — with optional login blocking and two-factor authentication. Administrator-only, with immediate e-mail alerts. There is no PRO version. All free.
+ * Version:           1.7.0
  * Requires at least: 6.5
  * Requires PHP:      8.1
  * Author:            Steven Glogger
  * Author URI:        https://www.glogger.ch
  * License:           GPL-2.0-or-later
  * License URI:       https://www.gnu.org/licenses/gpl-2.0.html
- * Text Domain:       sentinel-security-center
- * Domain Path:       /languages
+ * Text Domain:       vokull-security-center
  *
  * @package WPSecurityCenter
  */
@@ -26,7 +25,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // -----------------------------------------------------------------------------
 // Plugin constants
 // -----------------------------------------------------------------------------
-define( 'WPSEC_VERSION', '1.6.6' );
+define( 'WPSEC_VERSION', '1.7.0' );
 define( 'WPSEC_FILE', __FILE__ );
 define( 'WPSEC_DIR', plugin_dir_path( __FILE__ ) );
 define( 'WPSEC_URL', plugin_dir_url( __FILE__ ) );
@@ -57,7 +56,7 @@ if ( version_compare( PHP_VERSION, WPSEC_MIN_PHP, '<' ) ) {
 			echo '<div class="notice notice-error"><p>';
 			printf(
 			/* translators: 1: required PHP version, 2: current PHP version */
-				esc_html( 'Sentinel Security Center requires PHP %1$s or newer. You are running %2$s. The plugin has been disabled.' ),
+				esc_html( 'Security Center requires PHP %1$s or newer. You are running %2$s. The plugin has been disabled.' ),
 				esc_html( WPSEC_MIN_PHP ),
 				esc_html( PHP_VERSION )
 			);
@@ -74,7 +73,7 @@ if ( version_compare( (string) get_bloginfo( 'version' ), WPSEC_MIN_WP, '<' ) ) 
 			echo '<div class="notice notice-error"><p>';
 			printf(
 			/* translators: 1: required WordPress version, 2: current WordPress version */
-				esc_html( 'Sentinel Security Center requires WordPress %1$s or newer. You are running %2$s. The plugin has been disabled.' ),
+				esc_html( 'Security Center requires WordPress %1$s or newer. You are running %2$s. The plugin has been disabled.' ),
 				esc_html( WPSEC_MIN_WP ),
 				esc_html( (string) get_bloginfo( 'version' ) )
 			);
