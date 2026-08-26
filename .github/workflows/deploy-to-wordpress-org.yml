@@ -1,0 +1,232 @@
+name: Deploy to WordPress.org SVN
+
+# WordPress.org's SVN is a release system, not a source repository: whatever is
+# committed here is served to every installed site within minutes and cannot be
+# taken back — a published tag stays published. So this workflow deliberately
+# builds nothing of its own. It takes the ZIP that "Auto-tag & release from
+# plugin version" already built, verified and attached to the GitHub release,
+# and unpacks exactly that into trunk. What WordPress.org serves is then
+# byte-for-byte what was tested, released and downloadable from GitHub.
+#
+# It runs after that workflow succeeds, because a release created with
+# GITHUB_TOKEN does not fire `release: published` — workflow_run is the only
+# trigger that sees it. workflow_dispatch is there for re-deploying a version
+# that already has a GitHub release (a first-time backfill, or a deploy that
+# failed halfway on the SVN side).
+
+on:
+  workflow_run:
+    workflows: ['Auto-tag & release from plugin version']
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to deploy, without the "v" (default: the version on the checked-out branch)'
+        required: false
+        type: string
+      dry_run:
+        description: 'Prepare and diff everything, but do not commit to SVN'
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+# Two overlapping deploys would race for the same SVN working copy and could
+# interleave commits. Never cancel a running one: it may be mid-commit.
+concurrency:
+  group: wordpress-org-svn
+  cancel-in-progress: false
+
+env:
+  SLUG: vokull-security-center
+  SVN_URL: https://plugins.svn.wordpress.org/vokull-security-center
+
+jobs:
+  deploy:
+    name: Publish to the plugin directory
+    runs-on: ubuntu-latest
+    # A failed or cancelled release must not reach the directory.
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    steps:
+      # Only the WordPress.org assets/ images and this workflow come from the
+      # repository. The plugin itself comes from the release ZIP below.
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+
+      - name: Resolve version
+        id: ver
+        run: |
+          VERSION="${{ inputs.version }}"
+          if [ -z "$VERSION" ]; then
+            VERSION=$(grep -E '^\s*\*\s*Version:' "$SLUG.php" | head -n1 | awk -F: '{print $2}' | xargs)
+          fi
+          if ! printf '%s' "$VERSION" | grep -qE '^[0-9]+\.[0-9]+(\.[0-9]+)?$'; then
+            echo "::error::'$VERSION' is not a plausible plugin version"
+            exit 1
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Deploying $SLUG $VERSION"
+
+      - name: Install Subversion
+        run: |
+          command -v svn >/dev/null 2>&1 || {
+            sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends subversion
+          }
+          svn --version --quiet
+
+      # This is the whole point of the workflow: the artefact is not rebuilt,
+      # it is fetched. If the release has no ZIP, there is nothing to publish.
+      - name: Download the released ZIP
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION="${{ steps.ver.outputs.version }}"
+          mkdir -p "$RUNNER_TEMP/dl"
+          gh release download "v$VERSION" \
+            --repo "$GITHUB_REPOSITORY" \
+            --pattern "$SLUG.zip" \
+            --dir "$RUNNER_TEMP/dl"
+          ls -la "$RUNNER_TEMP/dl"
+
+      - name: Unpack and re-verify the package
+        run: |
+          VERSION="${{ steps.ver.outputs.version }}"
+          BUILD="$RUNNER_TEMP/build"
+          rm -rf "$BUILD"
+          mkdir -p "$BUILD"
+          unzip -q "$RUNNER_TEMP/dl/$SLUG.zip" -d "$BUILD"
+
+          # The ZIP must contain exactly one top-level directory named for the
+          # slug; SVN trunk holds its *contents*, not the directory itself.
+          test -d "$BUILD/$SLUG" || { echo "::error::the ZIP does not contain a top-level $SLUG/ directory"; exit 1; }
+          test -f "$BUILD/$SLUG/$SLUG.php" || { echo "::error::plugin bootstrap missing from the ZIP"; exit 1; }
+          test -f "$BUILD/$SLUG/readme.txt" || { echo "::error::readme.txt missing from the ZIP — the directory page is rendered from it"; exit 1; }
+          test -f "$BUILD/$SLUG/vendor/autoload.php" || { echo "::error::vendor/autoload.php missing from the ZIP"; exit 1; }
+
+          # The release workflow already cross-checks these three, but this is
+          # the last point at which a mismatch is still recoverable: after the
+          # commit, a wrong Stable tag is live for every installed site.
+          HEADER=$(grep -E '^\s*\*\s*Version:' "$BUILD/$SLUG/$SLUG.php" | head -n1 | awk -F: '{print $2}' | xargs)
+          STABLE=$(grep -E '^Stable tag:' "$BUILD/$SLUG/readme.txt" | awk -F: '{print $2}' | xargs)
+          [ "$HEADER" = "$VERSION" ] || { echo "::error::the ZIP for v$VERSION carries Version: $HEADER"; exit 1; }
+          [ "$STABLE" = "$VERSION" ] || { echo "::error::readme.txt Stable tag is $STABLE, expected $VERSION"; exit 1; }
+
+          echo "Verified $SLUG $VERSION — $(du -sh "$BUILD/$SLUG" | cut -f1)"
+
+      # Only trunk and the current tag are fetched at full depth. Every release
+      # of this plugin carries its own copy of vendor/, so a full checkout grows
+      # by megabytes per version and would eventually dominate the job.
+      - name: Checkout SVN (sparse)
+        run: |
+          VERSION="${{ steps.ver.outputs.version }}"
+          SVN="$RUNNER_TEMP/svn"
+          rm -rf "$SVN"
+          svn checkout --depth immediates "$SVN_URL" "$SVN" -q
+          svn update --set-depth infinity "$SVN/trunk" -q
+          # A brand-new plugin repository always has assets/, but tolerate
+          # its absence rather than fail the release over an image directory.
+          svn update --set-depth infinity "$SVN/assets" -q 2>/dev/null || true
+          # Not an error when the tag does not exist yet — that is the normal
+          # case. It matters when re-running a deploy that already tagged.
+          svn update --set-depth infinity "$SVN/tags/$VERSION" -q 2>/dev/null || true
+
+          if svn ls "$SVN_URL/tags/$VERSION" >/dev/null 2>&1; then
+            echo "tag_exists=true" >> "$GITHUB_ENV"
+            echo "::warning::tags/$VERSION already exists in SVN. trunk and assets will still be updated, but the tag is left untouched — WordPress.org tags are immutable in practice."
+          else
+            echo "tag_exists=false" >> "$GITHUB_ENV"
+          fi
+
+      - name: Sync trunk
+        run: |
+          BUILD="$RUNNER_TEMP/build/$SLUG"
+          SVN="$RUNNER_TEMP/svn"
+
+          # --delete is what makes trunk a mirror of the package rather than an
+          # accumulation of every file the plugin ever had. .svn must survive it.
+          rsync -a --delete --exclude='.svn/' "$BUILD/" "$SVN/trunk/"
+
+          cd "$SVN"
+          # svn has no equivalent of `git add -A`; additions and deletions have
+          # to be handed to it explicitly.
+          svn add --force --parents --depth infinity trunk -q
+
+          # `!` is svn for "gone from disk but still versioned" — what rsync
+          # --delete leaves behind. `|| true` because grep exits 1 when there is
+          # nothing to remove, which is the normal case and not an error. The
+          # trailing @ terminates svn's peg-revision syntax, so a filename
+          # containing @ is not truncated.
+          MISSING=$(svn status trunk | grep '^!' || true)
+          if [ -n "$MISSING" ]; then
+            printf '%s\n' "$MISSING" | sed 's/^! *//' | xargs -I% svn rm --force "%@" -q
+          fi
+
+      - name: Sync WordPress.org assets
+        run: |
+          SVN="$RUNNER_TEMP/svn"
+          if [ ! -d .wordpress-org ]; then
+            echo 'No .wordpress-org directory — leaving the directory assets untouched.'
+            exit 0
+          fi
+          mkdir -p "$SVN/assets"
+          rsync -a --delete --exclude='.svn/' --exclude='README.md' .wordpress-org/ "$SVN/assets/"
+          cd "$SVN"
+          svn add --force --parents --depth infinity assets -q
+          MISSING=$(svn status assets | grep '^!' || true)
+          if [ -n "$MISSING" ]; then
+            printf '%s\n' "$MISSING" | sed 's/^! *//' | xargs -I% svn rm --force "%@" -q
+          fi
+
+      # Copied from the working copy, not the server, so the tag and the trunk
+      # it was cut from land in a single atomic commit. Committing trunk first
+      # would leave a window in which readme.txt advertises a Stable tag that
+      # does not exist yet, and the directory serves that to every site.
+      - name: Create the release tag
+        if: env.tag_exists == 'false'
+        run: |
+          VERSION="${{ steps.ver.outputs.version }}"
+          cd "$RUNNER_TEMP/svn"
+          svn copy trunk "tags/$VERSION" -q
+          echo "Tagged $VERSION from trunk."
+
+      - name: Show what will be committed
+        run: |
+          cd "$RUNNER_TEMP/svn"
+          echo '--- svn status ---'
+          svn status
+          echo '--- summary ---'
+          svn status | awk '{print $1}' | sort | uniq -c
+          if [ -z "$(svn status)" ]; then
+            echo 'nothing_to_commit=true' >> "$GITHUB_ENV"
+            echo '::notice::SVN already matches this release — nothing to commit.'
+          fi
+
+      - name: Commit to WordPress.org
+        if: ${{ !inputs.dry_run && env.nothing_to_commit != 'true' }}
+        env:
+          SVN_USERNAME: ${{ secrets.SVN_USERNAME }}
+          SVN_PASSWORD: ${{ secrets.SVN_PASSWORD }}
+        run: |
+          VERSION="${{ steps.ver.outputs.version }}"
+          if [ -z "$SVN_USERNAME" ] || [ -z "$SVN_PASSWORD" ]; then
+            echo '::error::SVN_USERNAME / SVN_PASSWORD are not set in the repository secrets.'
+            exit 1
+          fi
+          cd "$RUNNER_TEMP/svn"
+          # --no-auth-cache: nothing is written to the runner's credential store.
+          svn commit \
+            -m "Release $VERSION — deployed from ${GITHUB_REPOSITORY}@${GITHUB_SHA}" \
+            --username "$SVN_USERNAME" \
+            --password "$SVN_PASSWORD" \
+            --no-auth-cache \
+            --non-interactive
+          echo "::notice::Committed $SLUG $VERSION. https://wordpress.org/plugins/$SLUG/ updates within a few minutes."
+
+      - name: Dry run — nothing committed
+        if: ${{ inputs.dry_run }}
+        run: |
+          echo '::notice::dry_run was set — the working copy above was prepared but not committed.'

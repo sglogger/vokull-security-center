@@ -437,9 +437,30 @@ git push origin main
 
 `.github/workflows/auto-tag.yml` takes it from there: it cross-checks the three
 versions, tags, installs runtime dependencies with `--no-dev`, asserts no dev
-package leaked into `vendor/`, builds the ZIP and
-publishes the GitHub release. The plugin carries no updater of its own: updates
-reach sites through WordPress.org once the release is published there.
+package leaked into `vendor/`, builds the ZIP and publishes the GitHub release.
+
+`.github/workflows/deploy-to-wordpress-org.yml` then runs automatically and
+publishes that same release to the plugin directory. It builds nothing of its
+own: it downloads the ZIP the previous workflow attached, unpacks it into SVN
+`trunk`, and creates `tags/<version>` in the same commit — so `Stable tag:` is
+never advertising a tag that does not exist yet. The plugin carries no updater
+of its own; that SVN commit is what reaches installed sites.
+
+It needs two repository secrets, `SVN_USERNAME` and `SVN_PASSWORD` — the
+WordPress.org SVN password from
+[profiles.wordpress.org](https://profiles.wordpress.org/me/profile/edit/group/3/?screen=svn-password),
+which is not the wordpress.org account password.
+
+The directory is a release system, not a repository: a published tag is
+effectively permanent, and a wrong `Stable tag:` is live on every installed site
+within minutes. Both workflows can be re-run by hand from the Actions tab —
+the deploy takes a version and a `dry_run` option that prepares the whole SVN
+working copy and prints `svn status` without committing. Re-running a version
+that is already tagged refreshes `trunk` and `assets` but leaves the tag alone.
+
+The images the directory page renders live in
+[.wordpress-org/](.wordpress-org/) and are synced on every deploy; they are not
+versioned and never enter the plugin ZIP.
 
 ## Translations
 
