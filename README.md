@@ -3,7 +3,10 @@
 Security monitoring and alerting for WordPress. It watches what an attacker has
 to touch in order to keep a foothold — plugins, themes, administrators, roles,
 configuration, files, and where logins come from — records it in a searchable
-log, and e-mails you immediately when it matters. There is no PRO version. All free.
+log, and e-mails you immediately when it matters. It also closes the front door:
+[two-factor authentication](#two-factor-authentication) with passkeys or an
+authenticator app, and country-aware login control. There is no PRO version. All
+free.
 
 Distributed through wordpress.org. The plugin ships no updater of its own —
 updates arrive the ordinary way, through WordPress.
@@ -151,17 +154,152 @@ Nothing on the page changes anything, and nothing is written.
 
 ## Two-factor authentication
 
-A TOTP code from any authenticator app, asked for after the password is
-accepted. Enrolment is per account and voluntary by default; a site setting can
-additionally require it for everyone who can `manage_options`, with a grace
-period whose clock starts when the requirement is switched on.
+Two independent second factors, and an account may hold either or both:
 
-How it holds together:
+- **A passkey** — a WebAuthn credential held by a phone, laptop, hardware key or
+  password manager. Nothing to type, and the browser will only ever offer it to
+  this exact domain, so a convincing copy of the login page gets nothing.
+- **An authenticator app** — a TOTP code, the familiar six digits. Works
+  offline, on any device, with any app.
 
-- **The session is issued only after the second factor.** `wp_login` fires after
-  WordPress has already set the cookie, so the first thing that happens is that
-  the session it just created is destroyed again — by token, so other sessions
-  the user has open elsewhere are untouched.
+Enrolment is per account and voluntary by default. A site setting can require a
+second factor for everyone who can `manage_options`, with a grace period whose
+clock starts when the requirement is switched on; **either** factor satisfies
+it.
+
+Where the site is served over HTTPS, a further setting allows a passkey to sign
+in *on its own*, with no password at all. It is off by default.
+
+### The sign-in flow
+
+WordPress has no hook between "the password was right" and "the session is
+issued", so the second factor works the way it has to: `wp_login` fires after
+`wp_signon()` has already set the cookie, and the first thing
+[`Two_Factor_Login`](includes/auth/class-two-factor-login.php) does is destroy
+that session again — by token, so other sessions the user has open elsewhere are
+untouched. The user is held on an interstitial and a cookie is issued for real
+only once a factor is proven.
+
+**1 — Password, then a second factor**
+
+```
+Username + password
+       │
+       ▼
+WordPress accepts the password
+       │
+       ▼
+the session it just issued is destroyed again
+       │
+       ▼
+Does the account have a second factor?
+       │
+       ├── Passkey ────► Face ID / Touch ID / Windows Hello ─┐
+       │                                                     │
+       ├── TOTP ───────► six digits from the app ────────────┤
+       │                                                     │
+       └── Recovery ───► one of ten single-use codes ────────┤
+                                                             │
+                                                             ▼
+                                                      session issued
+```
+
+The interstitial holds a single-use login nonce — fifteen minutes, stored
+hashed in user meta — and the same attempt limit applies whichever branch is
+taken.
+
+The passkey button is not a submit button: the script calls
+`navigator.credentials.get()`, writes the assertion into a hidden field and
+submits **the same form**. The response therefore arrives with the same login
+nonce, through the same handler, under the same attempt limits and into the same
+event log as a typed code. A passkey adds no second door to the site.
+
+**2 — Forced enrolment**
+
+An administrator inside the requirement who has no factor yet is held on the
+same interstitial, which offers a passkey and an authenticator app side by side.
+Registering the first of either also issues the recovery codes, which are shown
+once before the session is handed over.
+
+**3 — A passkey on its own** *(only when passwordless sign-in is switched on)*
+
+```
+"Sign in with a passkey"  —  or the browser's own autofill prompt
+       │
+       ▼
+POST wp-login.php?action=wpsec_passkey  { op: start }
+       │       the Origin header must match this site
+       ▼
+a challenge, held server-side in a single-use five-minute transient
+       │
+       ▼
+Face ID / Touch ID / Windows Hello  —  userVerification: "required"
+       │
+       ▼
+POST wp-login.php?action=wpsec_passkey  { op: finish, ticket, assertion }
+       │
+       ▼
+signature verified  →  credential looked up  →  owner resolved
+       │
+       ▼
+apply_filters( 'authenticate', … )  —  country rules, deny list, kill switch
+       │
+       ▼
+wp_set_auth_cookie()  →  do_action( 'wp_login' )  →  session issued
+```
+
+Three things make this safe to switch on:
+
+- **The authenticator must verify the user.** `userVerification: "required"`, so
+  the fingerprint, face or PIN is the second factor and the device holding the
+  key is the first. It is not a single factor wearing a disguise.
+- **Every other login guard still runs.** The resolved user is passed back
+  through WordPress's own `authenticate` chain, so geo rules, the deny list and
+  the kill switch apply exactly as they do to a password login — and `wp_login`
+  fires, so the sign-in is logged like any other.
+- **The request must come from this site.** An assertion produced here by an
+  attacker and replayed through somebody else's browser is the one trick
+  WebAuthn does not stop on its own; it would sign that person in as the
+  attacker. The `Origin` header is checked on both halves of the exchange.
+
+### How passkeys are stored
+
+Registration uses attestation `none` — nothing here makes a trust decision about
+the make of authenticator, so there is no vendor root certificate to verify and
+none to keep current. What is kept, in `wp_wpsec_passkeys`:
+
+| Column | Why |
+| --- | --- |
+| `credential_id`, `credential_hash` | The hash carries the unique index: a credential ID may be up to 1023 bytes and a `utf8mb4` index column may not |
+| `public_key` | PEM. Public by definition — there is nothing here to encrypt |
+| `sign_count` | See below |
+| `label`, `transports`, `aaguid` | So the list reads like devices rather than like base64 |
+| `user_verified`, `backup_eligible`, `backed_up` | Whether the key is synced between the user's devices, which decides whether losing one device loses it |
+
+A table rather than user meta for one reason: a passwordless sign-in has to find
+a credential *before* it knows whose it is, and that lookup must be indexed
+rather than a scan across every user's meta on the site.
+
+The user handle written into the authenticator is 32 random bytes, not the
+WordPress user ID. The specification says not to put anything personal in it,
+and a user ID is a small piece of exactly that.
+
+**Signature counters.** Authenticators that count increment on every assertion.
+If a private key were extracted and used elsewhere, the two copies would drift
+and one would eventually present a number the site has already seen. That is
+logged as `passkey.signcount_anomaly` at CRITICAL — but the login is *not*
+refused, because a mis-implemented authenticator would otherwise lock a
+legitimate user out permanently. Authenticators that do not count report zero
+forever, which says nothing either way and is left alone.
+
+**Domain binding.** A passkey belongs to the host of `home_url()` and its
+subdomains. On a subdomain multisite that means a passkey registered on one site
+does not work on the next; the setup screen says so, and the
+`wpsec_passkey_rp_id` filter exists for installations that want one shared
+credential across subdomains.
+
+### How TOTP is stored
+
 - **Secrets are encrypted at rest** with AES-256-GCM under a key derived from
   `SECURE_AUTH_SALT`. A database dump without `wp-config.php` yields nothing
   usable.
@@ -174,11 +312,11 @@ How it holds together:
 
 <a href="screenshots/2FA.png"><img src="screenshots/2FA.png" alt="Security Center &rarr; Two-factor enrolment" width="600"></a>
 
-Enrolment under **Security Center → Two-factor** for administrators, and under
-**Users → Two-factor** (or **Profile → Two-factor**, for roles that cannot list
-users) for everyone else — the same screen either way. The QR code is rendered
-on the server, the same secret is offered as a typed key, and step 2 will not
-switch anything on until a code from the app is accepted.
+Enrolment lives under **Security Center → Two-factor** for administrators, and
+under **Users → Two-factor** (or **Profile → Two-factor**, for roles that cannot
+list users) for everyone else — the same screen either way. It lists registered
+passkeys with the date each was added and last used, allows renaming and
+removing them, and carries the authenticator-app setup below.
 
 Enrolment is the one part of the plugin that is not gated on `manage_options`:
 the account holder owns their own second factor. The screen is therefore
@@ -186,22 +324,44 @@ registered against the profile menu, which every signed-in user has, rather
 than against the plugin menu, which only administrators can see. Nothing else
 about the plugin becomes visible to them.
 
-### If the authenticator is lost
+### If the device is lost
 
-1. **Recovery codes.** Ten single-use codes, issued at enrolment and shown once.
-   Stored as hashes — which is also why they still work after a salt rotation,
-   when the encrypted TOTP secrets no longer decrypt.
-2. **A one-time code by e-mail**, off by default. It reduces the second factor
+1. **Recovery codes.** Ten single-use codes, issued the first time any factor is
+   switched on — registering a passkey included — and shown once. Stored as
+   hashes, which is also why they still work after a salt rotation, when the
+   encrypted TOTP secrets no longer decrypt.
+2. **The other factor.** An account with both a passkey and an authenticator app
+   loses neither when one device goes.
+3. **A one-time code by e-mail**, off by default. It reduces the second factor
    to whoever can read the mailbox, and on many sites that mailbox lives on the
    same hosting account — so it is a deliberate, logged, opt-in weakening for
    sites where losing a phone would otherwise mean losing the site.
-3. **An administrator reset.** Any user with `edit_user` can clear someone
-   else's second factor from that user's profile screen. It is a reset, not a
-   bypass: they must enrol again, and the event is logged as `2fa.reset_by_admin`.
+4. **An administrator reset.** Any user with `edit_user` can clear someone
+   else's second factor from that user's profile screen. It clears everything —
+   every passkey included — and is a reset, not a bypass: they must enrol again,
+   and the event is logged as `2fa.reset_by_admin`.
 
 Application passwords, REST and XML-RPC are not challenged. There is nobody at
-the keyboard to type a code, and an application password is already a separate
-credential that can be revoked on its own.
+the keyboard to type a code or touch a sensor, and an application password is
+already a separate credential that can be revoked on its own. Authenticating
+those endpoints with the *account password* is refused outright for any account
+that has a second factor — otherwise a stolen password typed into `xmlrpc.php`
+would walk straight past the factor it was set up to survive.
+
+### Where it lives
+
+| File | What it does |
+| --- | --- |
+| [`class-two-factor.php`](includes/auth/class-two-factor.php) | Factor state, policy, recovery codes, the e-mail fallback |
+| [`class-passkeys.php`](includes/auth/class-passkeys.php) | The credential store, challenges, verification |
+| [`class-two-factor-login.php`](includes/auth/class-two-factor-login.php) | The interstitial and the passwordless endpoint |
+| [`class-totp.php`](includes/auth/class-totp.php) | RFC 6238, free of WordPress so it can be tested against the vectors |
+| [`class-secret-cipher.php`](includes/auth/class-secret-cipher.php) | AES-256-GCM for the TOTP secrets |
+| [`assets/js/passkeys.js`](assets/js/passkeys.js) | The browser half — base64url, and nothing else |
+
+The WebAuthn protocol itself (CBOR, COSE, signature verification) is
+[lbuchs/WebAuthn](https://github.com/lbuchs/webauthn), MIT-licensed and bundled
+under `vendor/`. It has no dependencies of its own and reaches no network.
 
 ## IP deny list
 
@@ -285,6 +445,13 @@ actually sets.
 - PHP 8.1 or newer
 - WordPress 6.5 or newer
 - Single-site. Multisite is not supported; activation stops with a message.
+- For authenticator apps: PHP with OpenSSL. Without it there is nowhere safe to
+  keep the shared secret, so the feature refuses to run rather than store one in
+  the clear.
+- For passkeys: HTTPS. Browsers will not create or use a passkey over a plain
+  connection, so the feature simply does not offer itself until the site has a
+  certificate. `localhost` counts as secure, which is what makes local
+  development possible.
 - For country rules: a free MaxMind GeoLite2 licence key, or a CDN that supplies
   a country header. The database cannot be bundled — MaxMind's licence forbids
   redistribution.

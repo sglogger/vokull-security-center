@@ -187,8 +187,46 @@ $wpsec_tabs = [
 				<th scope="row"><?php esc_html_e( 'Availability', 'vokull-security-center' ); ?></th>
 				<td>
 					<label><input type="checkbox" name="2fa_enabled" value="1" <?php checked( ! empty( $wpsec_2fa['enabled'] ) ); ?>>
-						<?php esc_html_e( 'Let users protect their account with an authenticator app', 'vokull-security-center' ); ?></label>
+						<?php esc_html_e( 'Let users protect their account with a second factor', 'vokull-security-center' ); ?></label>
 					<p class="description"><?php esc_html_e( 'Switching this off does not delete anything. Enrolled users simply stop being asked, and are asked again if it is switched back on.', 'vokull-security-center' ); ?></p>
+				</td>
+			</tr>
+			<tr>
+				<th scope="row"><?php esc_html_e( 'Passkeys', 'vokull-security-center' ); ?></th>
+				<td>
+					<label><input type="checkbox" name="2fa_passkeys" value="1" <?php checked( ! empty( $wpsec_2fa['passkeys'] ) ); ?>>
+						<?php esc_html_e( 'Let users register passkeys', 'vokull-security-center' ); ?></label>
+					<p class="description">
+						<?php esc_html_e( 'A passkey is a key pair held by the phone, laptop or hardware key that created it. The private half never leaves the device and the browser will only offer it to this exact domain, which is what makes it the one second factor that cannot be typed into a copy of your login page. Users can hold both a passkey and an authenticator app; either one satisfies the requirement above.', 'vokull-security-center' ); ?>
+					</p>
+
+					<?php if ( ! Passkeys::is_secure_context() ) : ?>
+						<div class="notice notice-warning inline"><p>
+							<?php esc_html_e( 'This site is not served over HTTPS, so browsers will refuse to create passkeys. The setting can be left on; it simply will not offer itself until the site has a certificate.', 'vokull-security-center' ); ?>
+						</p></div>
+					<?php endif; ?>
+
+					<p style="margin-top:12px;">
+						<label><input type="checkbox" name="2fa_passwordless" value="1" <?php checked( ! empty( $wpsec_2fa['passwordless'] ) ); ?>>
+							<?php esc_html_e( 'Allow a passkey to sign in on its own, without the password', 'vokull-security-center' ); ?></label>
+					</p>
+					<p class="description">
+						<?php esc_html_e( 'Adds a "Sign in with a passkey" button to the login screen. The passkey is then both factors at once — the device holds the key and the fingerprint, face or PIN proves who is holding it — so the password is never typed and never phishable. It is off by default because it is a second way into the site, and that is a decision worth taking deliberately. Country rules, the deny list and the kill switch all still apply, and every such sign-in is logged as one.', 'vokull-security-center' ); ?>
+					</p>
+
+					<?php if ( ! empty( $wpsec_2fa['passkeys'] ) && Passkeys::is_available() ) : ?>
+						<p class="description">
+							<?php
+							echo esc_html(
+								sprintf(
+									/* translators: %s: the domain passkeys are bound to */
+									__( 'Passkeys on this site are bound to the domain %s.', 'vokull-security-center' ),
+									Passkeys::rp_id()
+								)
+							);
+							?>
+						</p>
+					<?php endif; ?>
 				</td>
 			</tr>
 			<tr>
@@ -196,7 +234,7 @@ $wpsec_tabs = [
 				<td>
 					<label><input type="checkbox" name="2fa_require_admins" value="1" <?php checked( ! empty( $wpsec_2fa['require_admins'] ) ); ?>>
 						<?php esc_html_e( 'Require it for everyone who can manage options', 'vokull-security-center' ); ?></label>
-					<p class="description"><?php esc_html_e( 'They are nagged during the grace period below, and cannot sign in without enrolling once it has passed. The clock starts when you save this, not when the plugin was installed.', 'vokull-security-center' ); ?></p>
+					<p class="description"><?php esc_html_e( 'Either a passkey or an authenticator app satisfies this. They are nagged during the grace period below, and cannot sign in without enrolling once it has passed. The clock starts when you save this, not when the plugin was installed.', 'vokull-security-center' ); ?></p>
 					<p>
 						<label for="wpsec-grace"><?php esc_html_e( 'Grace period', 'vokull-security-center' ); ?></label>
 						<input type="number" id="wpsec-grace" name="2fa_grace_days" min="0" max="90" class="small-text"
@@ -223,7 +261,7 @@ $wpsec_tabs = [
 			<tr>
 				<th scope="row"><?php esc_html_e( 'Recovery', 'vokull-security-center' ); ?></th>
 				<td>
-					<p><?php esc_html_e( 'Ten single-use recovery codes are issued at enrolment and shown once. They are stored only as hashes, which is also why they survive a rotation of the site salts when the authenticator secrets do not.', 'vokull-security-center' ); ?></p>
+					<p><?php esc_html_e( 'Ten single-use recovery codes are issued the first time any second factor is switched on — a passkey included — and shown once. They are stored only as hashes, which is also why they survive a rotation of the site salts when the authenticator secrets do not.', 'vokull-security-center' ); ?></p>
 					<label><input type="checkbox" name="2fa_email_fallback" value="1" <?php checked( ! empty( $wpsec_2fa['email_fallback'] ) ); ?>>
 						<?php esc_html_e( 'Also allow a one-time code sent to the account e-mail address', 'vokull-security-center' ); ?></label>
 					<p class="description">

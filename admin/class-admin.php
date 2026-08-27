@@ -508,8 +508,13 @@ final class Admin {
 		$settings['enabled']        = ! empty( $post['2fa_enabled'] );
 		$settings['require_admins'] = ! empty( $post['2fa_require_admins'] );
 		$settings['email_fallback'] = ! empty( $post['2fa_email_fallback'] );
-		$settings['grace_days']     = max( 0, min( 90, (int) ( $post['2fa_grace_days'] ?? 7 ) ) );
-		$settings['email_ttl_min']  = max( 2, min( 60, (int) ( $post['2fa_email_ttl_min'] ?? 10 ) ) );
+		$settings['passkeys']       = ! empty( $post['2fa_passkeys'] );
+
+		// Passwordless cannot be on while passkeys are off: the switch would
+		// promise a sign-in method the site does not offer.
+		$settings['passwordless']  = ! empty( $post['2fa_passwordless'] ) && ! empty( $settings['passkeys'] );
+		$settings['grace_days']    = max( 0, min( 90, (int) ( $post['2fa_grace_days'] ?? 7 ) ) );
+		$settings['email_ttl_min'] = max( 2, min( 60, (int) ( $post['2fa_email_ttl_min'] ?? 10 ) ) );
 
 		// The grace clock starts the moment the requirement is switched on, not
 		// when the plugin was installed. Otherwise turning it on would lock out

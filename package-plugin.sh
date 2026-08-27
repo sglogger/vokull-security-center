@@ -142,6 +142,16 @@ for d in phpunit squizlabs wp-coding-standards phpcompatibility dealerdirect; do
 	[ ! -d "$STAGE/vendor/$d" ] || die "dev package vendor/$d present — refusing to ship"
 done
 
+# ...and a missing runtime one is worse: the feature it backs would fail at the
+# moment a user reaches for it rather than at build time.
+for f in \
+	vendor/lbuchs/webauthn/src/WebAuthn.php \
+	vendor/bacon/bacon-qr-code/src/Writer.php \
+	vendor/maxmind-db/reader/src/MaxMind/Db/Reader.php
+do
+	[ -f "$STAGE/$f" ] || die "runtime dependency $f missing after install"
+done
+
 # -----------------------------------------------------------------------------
 # Translations
 #
@@ -160,8 +170,15 @@ say 'Pruning'
 
 # Third-party packages ship their own test suites and docs. None of it is
 # needed at runtime and it is a meaningful share of the ZIP.
+#
+# The underscore-prefixed names matter more than they look: lbuchs/webauthn
+# carries a _test/ directory holding a standalone server.php demo endpoint and a
+# pile of vendor root certificates. A PHP file in a plugin that answers requests
+# on its own, outside WordPress, is exactly what the review guidelines are about
+# — so it must not reach the ZIP.
 find "$STAGE/vendor" -type d \
-	\( -name tests -o -name test -o -name doc -o -name docs \
+	\( -name tests -o -name test -o -name _test -o -name _tests \
+	   -o -name doc -o -name docs \
 	   -o -name examples -o -name .github -o -name bin \) \
 	-prune -exec rm -rf {} + 2>/dev/null || true
 
@@ -182,7 +199,7 @@ rm -f "$STAGE/assets/logos/"*-1024x1024.png
 
 say 'Verifying the staged tree'
 
-ANYWHERE='docker-compose|CLAUDE\.md|/\.env|local_wp_core|db_data|node_modules|/\.git|/tests?/|/steven/|\.pot?$|\.mo$|\.zip$'
+ANYWHERE='docker-compose|CLAUDE\.md|/\.env|local_wp_core|db_data|node_modules|/\.git|/_?tests?/|/steven/|\.pot?$|\.mo$|\.zip$'
 if find "$STAGE" | grep -Ei "$ANYWHERE"; then
 	die 'development files found in the staged plugin (listed above)'
 fi

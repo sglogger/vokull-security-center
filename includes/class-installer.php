@@ -113,6 +113,11 @@ final class Installer {
 		return $wpdb->prefix . 'wpsec_file_baseline';
 	}
 
+	public static function table_passkeys(): string {
+		global $wpdb;
+		return $wpdb->prefix . 'wpsec_passkeys';
+	}
+
 	// -------------------------------------------------------------------------
 	// Lifecycle
 	// -------------------------------------------------------------------------
@@ -272,7 +277,7 @@ final class Installer {
 			delete_option( $option );
 		}
 
-		foreach ( [ self::table_log(), self::table_user_baseline(), self::table_file_baseline() ] as $table ) {
+		foreach ( [ self::table_log(), self::table_user_baseline(), self::table_file_baseline(), self::table_passkeys() ] as $table ) {
 			// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.DirectDatabaseQuery, PluginCheck.Security.DirectDB.UnescapedDBParameter -- a table name cannot be a placeholder; the value is built from $wpdb->prefix and our own constant.
 			$wpdb->query( "DROP TABLE IF EXISTS `{$table}`" );
 		}
@@ -295,7 +300,7 @@ final class Installer {
 
 		global $wpdb;
 
-		foreach ( [ self::table_log(), self::table_user_baseline(), self::table_file_baseline() ] as $table ) {
+		foreach ( [ self::table_log(), self::table_user_baseline(), self::table_file_baseline(), self::table_passkeys() ] as $table ) {
 			// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.DirectDatabaseQuery -- table name built from $wpdb->prefix; result is not cacheable by design.
 			$found = $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $table ) );
 
@@ -320,10 +325,11 @@ final class Installer {
 
 		require_once ABSPATH . 'wp-admin/includes/upgrade.php';
 
-		$charset = $wpdb->get_charset_collate();
-		$log     = self::table_log();
-		$users   = self::table_user_baseline();
-		$files   = self::table_file_baseline();
+		$charset  = $wpdb->get_charset_collate();
+		$log      = self::table_log();
+		$users    = self::table_user_baseline();
+		$files    = self::table_file_baseline();
+		$passkeys = self::table_passkeys();
 
 		dbDelta(
 			"CREATE TABLE {$log} (
@@ -396,6 +402,33 @@ final class Installer {
 	KEY idx_scope (scope),
 	KEY idx_last_seen (last_seen),
 	KEY idx_suspicion (suspicion)
+) {$charset};"
+		);
+
+		// Passkeys live in a table rather than in user meta for one reason: a
+		// passwordless sign-in has to find a credential before it knows whose
+		// it is, and that lookup must be an indexed one rather than a scan
+		// across every user's meta on the site.
+		dbDelta(
+			"CREATE TABLE {$passkeys} (
+	id bigint(20) unsigned NOT NULL auto_increment,
+	user_id bigint(20) unsigned NOT NULL default 0,
+	credential_id varchar(255) NOT NULL default '',
+	credential_hash char(64) NOT NULL default '',
+	public_key text NOT NULL,
+	sign_count bigint(20) unsigned NOT NULL default 0,
+	transports varchar(100) NOT NULL default '',
+	aaguid varchar(32) NOT NULL default '',
+	label varchar(191) NOT NULL default '',
+	user_verified tinyint(1) unsigned NOT NULL default 0,
+	backup_eligible tinyint(1) unsigned NOT NULL default 0,
+	backed_up tinyint(1) unsigned NOT NULL default 0,
+	created_at datetime NOT NULL default '0000-00-00 00:00:00',
+	last_used_at datetime NOT NULL default '0000-00-00 00:00:00',
+	last_ip varchar(45) NOT NULL default '',
+	PRIMARY KEY  (id),
+	UNIQUE KEY uniq_credential (credential_hash),
+	KEY idx_user (user_id)
 ) {$charset};"
 		);
 	}
@@ -521,6 +554,15 @@ final class Installer {
 			'grace_days'     => 7,
 			'email_fallback' => false,
 			'email_ttl_min'  => 10,
+			// Passkeys are on by default because they cost nothing on a site
+			// that cannot use them: without HTTPS the feature simply never
+			// offers itself.
+			'passkeys'       => true,
+			// A passkey as the whole login is off by default. It is a second
+			// way into the site that does not involve the password at all, and
+			// that is an administrator's decision to make deliberately rather
+			// than one to inherit from a default.
+			'passwordless'   => false,
 		];
 	}
 

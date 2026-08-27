@@ -125,8 +125,16 @@ jobs:
 
           # Third-party packages ship their own test suites and docs. None of
           # it is needed at runtime and it is a meaningful share of the ZIP.
+          #
+          # The underscore-prefixed names matter more than they look:
+          # lbuchs/webauthn carries a _test/ directory holding a standalone
+          # server.php demo endpoint and a pile of vendor root certificates. A
+          # PHP file in a plugin that answers requests on its own, outside
+          # WordPress, is exactly what the review guidelines are about — so it
+          # must not reach the ZIP.
           find "$STAGE/vendor" -type d \
-            \( -name tests -o -name test -o -name doc -o -name docs \
+            \( -name tests -o -name test -o -name _test -o -name _tests \
+               -o -name doc -o -name docs \
                -o -name examples -o -name .github -o -name bin \) \
             -prune -exec rm -rf {} + 2>/dev/null || true
           find "$STAGE" \( -name '*.md' -o -name '*.po' -o -name '*.pot' -o -name '.DS_Store' \
@@ -151,7 +159,7 @@ jobs:
           find "$STAGE" -not -path '*/vendor/*/*' | sort
 
           # Never acceptable anywhere in the package.
-          ANYWHERE='docker-compose|CLAUDE\.md|/\.env|local_wp_core|db_data|node_modules|/\.git|/tests?/|/steven/|\.pot?$|\.mo$|\.zip$'
+          ANYWHERE='docker-compose|CLAUDE\.md|/\.env|local_wp_core|db_data|node_modules|/\.git|/_?tests?/|/steven/|\.pot?$|\.mo$|\.zip$'
           if find "$STAGE" | grep -Ei "$ANYWHERE"; then
             echo "::error::development files found in the staged plugin (listed above)"
             exit 1
@@ -180,6 +188,17 @@ jobs:
             || { echo "::error::plugin header missing from the staged bootstrap"; exit 1; }
 
           test -f "$STAGE/vendor/autoload.php" || { echo "::error::vendor/autoload.php missing from the staged plugin"; exit 1; }
+
+          # A missing runtime dependency is worse than a stray dev one: the
+          # feature it backs would fail at the moment a user reaches for it
+          # rather than here.
+          for f in \
+            vendor/lbuchs/webauthn/src/WebAuthn.php \
+            vendor/bacon/bacon-qr-code/src/Writer.php \
+            vendor/maxmind-db/reader/src/MaxMind/Db/Reader.php
+          do
+            test -f "$STAGE/$f" || { echo "::error::runtime dependency $f missing from the staged plugin"; exit 1; }
+          done
           test -f "$STAGE/composer.json" || { echo "::error::composer.json missing from the staged plugin — vendor/ ships, so its manifest must too"; exit 1; }
 
           echo "--- staged size ---"

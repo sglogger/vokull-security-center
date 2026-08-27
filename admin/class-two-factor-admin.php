@@ -39,6 +39,7 @@ final class Two_Factor_Admin {
 		add_action( 'admin_menu', [ $this, 'add_page' ], 20 );
 		add_action( 'admin_init', [ $this, 'handle_post' ] );
 		add_action( 'admin_notices', [ $this, 'grace_notice' ] );
+		add_action( 'admin_enqueue_scripts', [ $this, 'enqueue_assets' ] );
 
 		add_action( 'show_user_profile', [ $this, 'profile_section' ] );
 		add_action( 'edit_user_profile', [ $this, 'profile_section' ] );
@@ -116,16 +117,27 @@ final class Two_Factor_Admin {
 		}
 
 		$wpsec_available  = Two_Factor::is_available();
+		$wpsec_totp_ready = Two_Factor::totp_available();
+		$wpsec_has_totp   = Two_Factor::has_totp( (int) $wpsec_user->ID );
 		$wpsec_active     = Two_Factor::is_active_for( (int) $wpsec_user->ID );
 		$wpsec_left       = Two_Factor::recovery_codes_left( (int) $wpsec_user->ID );
 		$wpsec_required   = Two_Factor::required_for( $wpsec_user );
 		$wpsec_new_codes  = self::flash( 'codes' );
-		$wpsec_setting_up = ! $wpsec_active && ( self::flash( 'setup' ) || Two_Factor::must_enrol( $wpsec_user ) );
+		$wpsec_error      = self::flash_error();
+		$wpsec_setting_up = ! $wpsec_has_totp && ( self::flash( 'setup' ) || ( ! $wpsec_active && Two_Factor::must_enrol( $wpsec_user ) ) );
 		$wpsec_secret     = '';
 		$wpsec_uri        = '';
 		$wpsec_svg        = '';
 
-		if ( $wpsec_available && $wpsec_setting_up ) {
+		// Passkeys
+		$wpsec_pk_ready = Passkeys::is_available();
+		$wpsec_pk_why   = Passkeys::unavailable_reason();
+		$wpsec_pk_list  = $wpsec_pk_ready ? Passkeys::for_user( (int) $wpsec_user->ID ) : [];
+		$wpsec_pk_full  = count( $wpsec_pk_list ) >= Passkeys::MAX_PER_USER;
+		$wpsec_pk_args  = ( $wpsec_pk_ready && ! $wpsec_pk_full ) ? Passkeys::creation_options( $wpsec_user ) : null;
+		$wpsec_pk_login = Passkeys::passwordless_enabled();
+
+		if ( $wpsec_totp_ready && $wpsec_setting_up ) {
 			$wpsec_secret = Two_Factor::pending_secret( (int) $wpsec_user->ID );
 
 			if ( '' === $wpsec_secret ) {
@@ -137,6 +149,21 @@ final class Two_Factor_Admin {
 		}
 
 		require WPSEC_DIR . 'admin/views/page-two-factor.php';
+	}
+
+	/**
+	 * Load the passkey script, and only on the screen that uses it.
+	 *
+	 * @param string $hook_suffix The current admin page.
+	 */
+	public function enqueue_assets( $hook_suffix = '' ): void {
+		if ( ! is_string( $hook_suffix ) || ! str_contains( $hook_suffix, self::PAGE ) ) {
+			return;
+		}
+
+		if ( Passkeys::is_available() ) {
+			Passkeys::enqueue_script();
+		}
 	}
 
 	/**
@@ -182,6 +209,13 @@ final class Two_Factor_Admin {
 					$this->redirect( 'setup', 'bad_code' );
 				}
 
+				// Empty means the account already had a set — minted when a
+				// passkey was registered earlier — and that set is still the
+				// one the user filed away.
+				if ( empty( $codes ) ) {
+					$this->redirect( '', 'enabled_kept' );
+				}
+
 				$this->stash_codes( $codes );
 				$this->redirect( '', 'enabled' );
 				break;
@@ -211,7 +245,64 @@ final class Two_Factor_Admin {
 				Two_Factor::disable( $user_id, 'self' );
 				$this->redirect( '', 'disabled' );
 				break;
+
+			case 'disable_totp':
+				Two_Factor::disable_totp( $user_id );
+				$this->redirect( '', 'totp_off' );
+				break;
+
+			case 'passkey_add':
+				$this->add_passkey( $user );
+				break;
+
+			case 'passkey_remove':
+				$id = isset( $_POST['wpsec_passkey_id'] ) ? absint( wp_unslash( $_POST['wpsec_passkey_id'] ) ) : 0;
+
+				$this->redirect( '', Passkeys::forget( $user_id, $id ) ? 'passkey_gone' : 'passkey_failed' );
+				break;
+
+			case 'passkey_rename':
+				$id    = isset( $_POST['wpsec_passkey_id'] ) ? absint( wp_unslash( $_POST['wpsec_passkey_id'] ) ) : 0;
+				$label = isset( $_POST['wpsec_passkey_label'] ) ? sanitize_text_field( wp_unslash( (string) $_POST['wpsec_passkey_label'] ) ) : '';
+
+				Passkeys::relabel( $user_id, $id, $label );
+				$this->redirect( '', 'passkey_renamed' );
+				break;
 		}
+	}
+
+	/**
+	 * Store a passkey the browser has just created.
+	 *
+	 * Recovery codes are minted here rather than offered. A passkey lives on
+	 * one device; the user who has only that device and loses it has no way
+	 * back into the account, and the moment to fix that is before it happens.
+	 */
+	private function add_passkey( \WP_User $user ): void {
+		// phpcs:disable WordPress.Security.NonceVerification.Missing -- check_admin_referer() ran in handle_post() before this was reached.
+		$ticket = isset( $_POST['wpsec_passkey_ticket'] ) ? sanitize_text_field( wp_unslash( (string) $_POST['wpsec_passkey_ticket'] ) ) : '';
+		$label  = isset( $_POST['wpsec_passkey_label'] ) ? sanitize_text_field( wp_unslash( (string) $_POST['wpsec_passkey_label'] ) ) : '';
+		// Not sanitised as text, which would corrupt it: a JSON document,
+		// strictly decoded and shape-checked inside Passkeys, never stored and
+		// never echoed.
+		// phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- validated by shape in Passkeys::parse_response(); see above.
+		$answer = isset( $_POST['wpsec_passkey_response'] ) ? wp_unslash( (string) $_POST['wpsec_passkey_response'] ) : '';
+		// phpcs:enable WordPress.Security.NonceVerification.Missing
+
+		$result = Passkeys::register( $user, $ticket, $answer, $label );
+
+		if ( is_wp_error( $result ) ) {
+			$this->stash_error( $result->get_error_message() );
+			$this->redirect( '', 'passkey_failed' );
+		}
+
+		$codes = Two_Factor::ensure_recovery_codes( (int) $user->ID );
+
+		if ( ! empty( $codes ) ) {
+			$this->stash_codes( $codes );
+		}
+
+		$this->redirect( '', 'passkey_added' );
 	}
 
 	/**
@@ -267,6 +358,27 @@ final class Two_Factor_Admin {
 	}
 
 	/**
+	 * Carry one error message across the redirect that follows a failed
+	 * registration. The message can be long and is not something to put in a
+	 * URL, where it would sit in the browser history.
+	 */
+	private function stash_error( string $message ): void {
+		set_transient( 'wpsec_2fa_err_' . get_current_user_id(), $message, MINUTE_IN_SECONDS );
+	}
+
+	private static function flash_error(): string {
+		$key     = 'wpsec_2fa_err_' . get_current_user_id();
+		$message = get_transient( $key );
+
+		if ( is_string( $message ) && '' !== $message ) {
+			delete_transient( $key );
+			return $message;
+		}
+
+		return '';
+	}
+
+	/**
 	 * @return string[]|bool The stashed codes, or whether a view was requested.
 	 */
 	private static function flash( string $what ) {
@@ -293,10 +405,16 @@ final class Two_Factor_Admin {
 		$notice = isset( $_GET['wpsec_2fa_notice'] ) ? sanitize_key( wp_unslash( (string) $_GET['wpsec_2fa_notice'] ) ) : '';
 
 		$messages = [
-			'enabled'  => [ 'success', __( 'Two-factor authentication is on. Save the recovery codes below.', 'vokull-security-center' ) ],
-			'disabled' => [ 'warning', __( 'Two-factor authentication has been switched off for your account.', 'vokull-security-center' ) ],
-			'codes'    => [ 'success', __( 'New recovery codes generated. The previous set no longer works.', 'vokull-security-center' ) ],
-			'bad_code' => [ 'error', __( 'That code was not right. Make sure the phone clock is correct and try the code showing now.', 'vokull-security-center' ) ],
+			'enabled'         => [ 'success', __( 'Two-factor authentication is on. Save the recovery codes below.', 'vokull-security-center' ) ],
+			'enabled_kept'    => [ 'success', __( 'The authenticator app is set up. Your existing recovery codes still work, so no new ones were issued.', 'vokull-security-center' ) ],
+			'disabled'        => [ 'warning', __( 'Two-factor authentication has been switched off for your account.', 'vokull-security-center' ) ],
+			'codes'           => [ 'success', __( 'New recovery codes generated. The previous set no longer works.', 'vokull-security-center' ) ],
+			'bad_code'        => [ 'error', __( 'That code was not right. Make sure the phone clock is correct and try the code showing now.', 'vokull-security-center' ) ],
+			'totp_off'        => [ 'warning', __( 'The authenticator app has been removed from your account.', 'vokull-security-center' ) ],
+			'passkey_added'   => [ 'success', __( 'Passkey registered. You can sign in with it from now on.', 'vokull-security-center' ) ],
+			'passkey_gone'    => [ 'warning', __( 'That passkey has been removed and can no longer sign in.', 'vokull-security-center' ) ],
+			'passkey_renamed' => [ 'success', __( 'Passkey renamed.', 'vokull-security-center' ) ],
+			'passkey_failed'  => [ 'error', __( 'The passkey could not be saved.', 'vokull-security-center' ) ],
 		];
 
 		if ( ! isset( $messages[ $notice ] ) ) {
@@ -330,9 +448,31 @@ final class Two_Factor_Admin {
 		echo '<th scope="row">' . esc_html__( 'Status', 'vokull-security-center' ) . '</th><td>';
 
 		if ( $active ) {
+			$methods = Two_Factor::methods_for( (int) $user->ID );
+			$named   = [];
+
+			if ( in_array( 'passkey', $methods, true ) ) {
+				$named[] = sprintf(
+					/* translators: %d: number of registered passkeys */
+					_n( '%d passkey', '%d passkeys', Passkeys::count_for( (int) $user->ID ), 'vokull-security-center' ),
+					Passkeys::count_for( (int) $user->ID )
+				);
+			}
+
+			if ( in_array( 'totp', $methods, true ) ) {
+				$named[] = __( 'an authenticator app', 'vokull-security-center' );
+			}
+
 			printf(
-				'<p><strong>%s</strong> %s</p>',
+				'<p><strong>%s</strong> %s %s</p>',
 				esc_html__( 'On.', 'vokull-security-center' ),
+				esc_html(
+					sprintf(
+						/* translators: %s: a list such as "2 passkeys, an authenticator app" */
+						__( 'Signing in uses %s.', 'vokull-security-center' ),
+						implode( ', ', $named )
+					)
+				),
 				esc_html(
 					sprintf(
 						/* translators: %d: number of unused recovery codes */
@@ -356,7 +496,7 @@ final class Two_Factor_Admin {
 			echo '<p><label><input type="checkbox" name="wpsec_2fa_reset" value="1"> '
 				. esc_html__( 'Reset two-factor authentication for this user', 'vokull-security-center' ) . '</label><br>'
 				. '<span class="description">'
-				. esc_html__( 'Use this when they have lost the authenticator, the recovery codes and access to their mailbox. They will have to set it up again, and the reset is recorded in the event log.', 'vokull-security-center' )
+				. esc_html__( 'Use this when they have lost their passkeys, the authenticator, the recovery codes and access to their mailbox. Everything goes — every passkey included — and they will have to set it up again. The reset is recorded in the event log.', 'vokull-security-center' )
 				. '</span></p>';
 		}
 

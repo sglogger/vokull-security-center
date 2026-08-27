@@ -132,6 +132,7 @@ final class Event_Registry {
 			// -----------------------------------------------------------------
 			'2fa.enabled'                         => $e( self::NOTICE, self::MODE_LOG, 'user', 'twofactor' ),
 			'2fa.disabled'                        => $e( self::HIGH, self::MODE_EMAIL, 'user', 'twofactor' ),
+			'2fa.totp_disabled'                   => $e( self::WARNING, self::MODE_LOG, 'user', 'twofactor' ),
 			'2fa.reset_by_admin'                  => $e( self::HIGH, self::MODE_EMAIL, 'user', 'twofactor' ),
 			'2fa.challenge_issued'                => $e( self::INFO, self::MODE_LOG, 'user', 'twofactor' ),
 			'2fa.challenge_passed'                => $e( self::INFO, self::MODE_LOG, 'user', 'twofactor' ),
@@ -142,6 +143,26 @@ final class Event_Registry {
 			'2fa.email_code_sent'                 => $e( self::NOTICE, self::MODE_LOG, 'user', 'twofactor' ),
 			'2fa.email_code_used'                 => $e( self::HIGH, self::MODE_EMAIL, 'user', 'twofactor' ),
 			'2fa.policy_changed'                  => $e( self::HIGH, self::MODE_EMAIL, 'system', 'twofactor' ),
+
+			// -----------------------------------------------------------------
+			// Passkeys
+			//
+			// Registering one is how an account gains a phishing-resistant
+			// factor, and removing one is how an attacker who already has a
+			// session would quietly take it away again — so both are worth a
+			// line, and the removal is worth an e-mail.
+			// -----------------------------------------------------------------
+			'passkey.registered'                  => $e( self::NOTICE, self::MODE_LOG, 'user', 'twofactor' ),
+			'passkey.removed'                     => $e( self::HIGH, self::MODE_EMAIL, 'user', 'twofactor' ),
+			'passkey.used'                        => $e( self::INFO, self::MODE_LOG, 'user', 'twofactor' ),
+			'passkey.passwordless_login'          => $e( self::NOTICE, self::MODE_LOG, 'user', 'twofactor' ),
+			'passkey.verification_failed'         => $e( self::WARNING, self::MODE_LOG, 'user', 'twofactor' ),
+
+			// An authenticator that counts should never repeat a value. If one
+			// does, either a backup was restored or the private key is in two
+			// places — and the second of those is the whole reason the counter
+			// exists.
+			'passkey.signcount_anomaly'           => $e( self::CRITICAL, self::MODE_EMAIL, 'user', 'twofactor' ),
 
 			// -----------------------------------------------------------------
 			// Options and configuration

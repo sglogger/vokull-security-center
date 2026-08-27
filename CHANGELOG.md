@@ -9,6 +9,106 @@ When a release goes out, the same summary must also be added to the
 `== Changelog ==` section of `readme.txt` — that is what WordPress shows in the
 plugin details modal.
 
+## [1.8.0] - 2026-08-27
+
+### Added
+
+- **Passkeys.** A second factor that is not a code: a WebAuthn credential held
+  by the phone, laptop, hardware key or password manager that created it. The
+  private half never leaves the device, only a public key is stored here, and
+  the browser will only offer the credential to this exact domain — which makes
+  it the one second factor that cannot be typed into a convincing copy of the
+  login page.
+
+  Passkeys sit *alongside* authenticator apps rather than replacing them. An
+  account may hold either or both, and either satisfies the "administrators must
+  use two-factor" policy. The setup screen lists registered passkeys with when
+  each was added and last used, and allows renaming and removing them; up to ten
+  per account.
+
+  Registering the first passkey also issues the recovery codes, if the account
+  has no set yet. A passkey lives on one device, and a user who loses that device
+  with nothing written down has no way back in — so the codes are part of
+  switching the factor on rather than an offer made afterwards.
+
+  At the login screen the passkey button is not a submit button: the script fills
+  a hidden field and submits the same form, so the response arrives with the same
+  login nonce, through the same handler, under the same attempt limits and into
+  the same event log as a typed code. The feature adds exactly one endpoint to
+  the site, and only for the passwordless case below.
+
+- **Passwordless sign-in**, off by default. Where it is switched on, the login
+  screen gains a "Sign in with a passkey" button — and, on browsers that support
+  it, the passkey is offered from the username field's own autofill list. The
+  authenticator must verify the user (fingerprint, face or PIN), so the device
+  holding the key and the person holding the device are both proven; it is not a
+  single factor wearing a disguise.
+
+  The resolved user is passed back through WordPress's own `authenticate` chain
+  before any cookie is set, so country rules, the IP deny list and the kill
+  switch apply exactly as they do to a password login, and `wp_login` fires so
+  the sign-in is logged like any other. Both halves of the exchange refuse a
+  request whose `Origin` is not this site: an assertion produced here by an
+  attacker and replayed through somebody else's browser is the one trick WebAuthn
+  does not stop on its own.
+
+- New events: `passkey.registered`, `passkey.removed` (e-mailed), `passkey.used`,
+  `passkey.passwordless_login`, `passkey.verification_failed`, and
+  `passkey.signcount_anomaly` — CRITICAL and e-mailed. An authenticator that
+  keeps a signature counter should never repeat a value; one that does is either
+  a restored backup or a private key that exists in two places. The login is not
+  refused on that signal, because a mis-implemented authenticator would otherwise
+  lock a legitimate user out permanently, but it is put in front of an
+  administrator.
+
+- Two settings under **Settings → Two-factor**: whether users may register
+  passkeys (on by default — it costs nothing on a site that cannot use them, as
+  the feature simply never offers itself without HTTPS), and whether a passkey
+  may sign in without the password (off by default).
+
+- `wpsec_passkey_rp_id` and `wpsec_passkey_allowed_origins` filters, for
+  installations legitimately reachable under more than one hostname.
+
+### Changed
+
+- "Has a second factor" now means a passkey **or** an authenticator app. The
+  requirement policy, the grace period, the profile screen, the hardening
+  report's two-factor coverage check and the refusal to authenticate the REST
+  API and XML-RPC with an account password all follow from that one definition
+  and needed no separate rules.
+
+- The authenticator app can now be removed on its own, leaving passkeys and
+  recovery codes in place. "Turn off two-factor authentication" still removes
+  everything — every passkey included — as does an administrator reset, because
+  an account the user believes is unprotected must not still hold a credential
+  that can sign in.
+
+- Recovery codes are no longer re-minted when a second factor is added to an
+  account that already has a set. Doing so would silently invalidate the codes
+  the user filed away when they registered the first one.
+
+### Internal
+
+- New table `wpsec_passkeys` (data version 1.3). A table rather than user meta
+  because a passwordless sign-in has to find a credential before it knows whose
+  it is, and that lookup must be indexed rather than a scan across every user's
+  meta on the site. The unique index is on a hash of the credential ID: an ID may
+  be up to 1023 bytes and a `utf8mb4` index column may not.
+
+- The user handle written into the authenticator is 32 random bytes rather than
+  the WordPress user ID — the specification says not to put anything personal in
+  it.
+
+- WebAuthn protocol handling (CBOR, COSE, signature verification) is
+  [lbuchs/WebAuthn](https://github.com/lbuchs/webauthn) v2.2, MIT-licensed, with
+  no dependencies of its own and no network access. Attestation is requested and
+  accepted as `none`: nothing here makes a trust decision about the make of
+  authenticator, so there is no vendor root certificate to verify and none to
+  keep current. `package-plugin.sh` prunes the library's `_test/` directory,
+  which carries a standalone demo endpoint that has no business in a plugin ZIP,
+  and now fails the build if any runtime dependency is missing from the staged
+  tree.
+
 ## [1.7.0] - 2026-08-24
 
 ### Changed
@@ -579,6 +679,7 @@ GitHub Releases self-updater, CI and the local development environment.
   as though it were a valid release, producing a fatal error on the Plugins
   screen. Affects any repository without a published release.
 
+[1.8.0]: https://github.com/sglogger/vokull-security-center/releases/tag/v1.8.0
 [1.7.0]: https://github.com/sglogger/vokull-security-center/releases/tag/v1.7.0
 [1.4.0]: https://github.com/sglogger/vokull-security-center/releases/tag/v1.4.0
 [1.1.1]: https://github.com/sglogger/vokull-security-center/releases/tag/v1.1.1

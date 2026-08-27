@@ -1,14 +1,14 @@
 === Vokull Security Center ===
 Contributors: glogger
-Tags: security, activity log, audit log, two-factor, file integrity
+Tags: security, activity log, audit log, two-factor, passkeys
 Requires at least: 6.5
 Tested up to: 7.1
 Requires PHP: 8.1
-Stable tag: 1.7.0
+Stable tag: 1.8.0
 License: GPL-2.0-or-later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
-Security monitoring and alerting: plugin, user, role and configuration changes, file integrity, two-factor authentication and geo-aware logins.
+Security monitoring and alerting: plugin, user, role and config changes, file integrity, passkeys, two-factor authentication and geo-aware logins.
 
 == Description ==
 
@@ -25,7 +25,7 @@ It is built around two goals that pull against each other: miss as little as pos
 * Configuration: critical options such as siteurl, home, admin_email, users_can_register and default_role; wp-config.php and .htaccess changes; WordPress core files verified against the official checksums; cron jobs; newly appearing must-use plugins; XML-RPC and file-editor state; application passwords.
 * Filesystem: new or changed files in wp-content/mu-plugins/, and any PHP file under wp-content/uploads/ — where one never belongs. New PHP files are additionally checked against common backdoor signatures.
 * Logins: failed attempts, successful logins, a login from a country outside your allow list, and logins refused by the IP deny list — with optional blocking.
-* Two-factor authentication: who switched it on or off, wrong codes submitted after a correct password, and every use of a recovery code or the e-mail fallback.
+* Two-factor authentication: who switched it on or off, passkeys registered and removed, wrong codes submitted after a correct password, and every use of a recovery code or the e-mail fallback.
 
 A separate Hardening screen reports the current posture — file editor, permissions, salts, updates, HTTPS, two-factor coverage and more — against the official WordPress hardening guide, linking to it at each point.
 
@@ -37,13 +37,36 @@ A read-only screen grading this installation against the official WordPress hard
 
 Checks are graded Good, Fix this, Worth fixing — or "Your call", for the ones that genuinely depend on how the site is run rather than having a right answer. Nothing on the page changes anything.
 
-**Two-factor authentication**
+**Two-factor authentication: passkeys or an authenticator app**
 
-A one-time code from any authenticator app, asked for after the password is accepted — and the session is only issued once that code is right. Enrolment is per account and voluntary by default; a site setting can require it for administrators, with a grace period whose clock starts when you switch the requirement on.
+Two independent second factors, and an account may hold either or both. Whichever is used, the session is issued only after the factor is proven — never before. Enrolment is per account and voluntary by default; a site setting can require a second factor for administrators, with a grace period whose clock starts when you switch the requirement on. Either factor satisfies it.
 
-Shared secrets are encrypted with AES-256-GCM under a key derived from the site salts, so a database dump without wp-config.php is useless. Each code is accepted once, so a code read over your shoulder cannot be replayed. The QR code is drawn on your own server — the secret is never sent to an external QR service.
+    Username + password
+           │
+           ▼
+    WordPress accepts the password
+           │
+           ▼
+    Does the account have a second factor?
+           │
+           ├── Passkey ────► Face ID / Touch ID / Hello ──┐
+           │                                              │
+           ├── TOTP ───────► six digits from the app ─────┤
+           │                                              │
+           └── Recovery ───► one of ten single-use codes ─┤
+                                                          │
+                                                          ▼
+                                                        Login
 
-Recovery, in order: ten single-use recovery codes issued at enrolment; optionally a one-time code mailed to the account address; and failing everything, a reset by another administrator.
+*Passkeys.* A WebAuthn credential held by the phone, laptop, hardware key or password manager that created it. There is nothing to type, nothing to read out over the phone to someone claiming to be support, and the browser will only ever offer the passkey to your exact domain — so a convincing copy of your login page gets nothing. Only a public key is stored on the site; the private half never leaves the device. Users can register several and see when each was last used. If an authenticator that keeps a signature counter ever repeats a value — what a cloned key looks like — that is logged and mailed to you.
+
+*Passwordless sign-in.* On an HTTPS site you can additionally allow a passkey to sign in on its own, with no password at all. It is off by default, because it is a second way into the site and that is a decision worth taking deliberately. The authenticator must verify the user (fingerprint, face or PIN), and country rules, the IP deny list and the kill switch all still apply.
+
+*Authenticator apps.* The familiar six digits from any TOTP app. Shared secrets are encrypted with AES-256-GCM under a key derived from the site salts, so a database dump without wp-config.php is useless. Each code is accepted once, so a code read over your shoulder cannot be replayed. The QR code is drawn on your own server — the secret is never sent to an external QR service.
+
+Recovery, in order: ten single-use recovery codes, issued the first time any factor is switched on and shown once; the other factor, if the account has both; optionally a one-time code mailed to the account address; and failing everything, a reset by another administrator.
+
+No part of this contacts anything outside your own site. Passkeys are a conversation between the browser and this server; the WebAuthn library is bundled with the plugin.
 
 **Geo-aware login control**
 
@@ -53,7 +76,7 @@ Because locking yourself out is the real risk, there are four independent ways b
 
 **Administrator-only**
 
-The plugin adds no front-end output, no REST routes and no shortcodes. Its menu, notices, assets and actions all require the manage_options capability, and a blocked login is indistinguishable from an ordinary wrong password. The one exception is two-factor enrolment: that belongs to the account holder, so every signed-in user finds a Two-factor entry in their own profile menu and can set it up there. Nothing else about the plugin becomes visible to them.
+The plugin adds no front-end output, no REST routes and no shortcodes. Its menu, notices, assets and actions all require the manage_options capability, and a blocked login is indistinguishable from an ordinary wrong password. The one exception is two-factor enrolment: that belongs to the account holder, so every signed-in user finds a Two-factor entry in their own profile menu and can set up a passkey or an authenticator app there. Nothing else about the plugin becomes visible to them.
 
 **About the name**
 
@@ -93,6 +116,16 @@ Service provided by Cloudflare, Inc. — [website terms of use](https://www.clou
 6. Leave blocking in monitor mode for a few days, review the log, then arm it.
 
 == Frequently Asked Questions ==
+
+= Do passkeys need anything special? =
+
+An HTTPS site and a reasonably current browser. Nothing else: no service to sign up for, no key to configure, no traffic leaving your server. If the site is not on HTTPS the feature does not offer itself, because browsers refuse to create a passkey over a plain connection.
+
+A passkey is bound to your domain. On a subdomain multisite, one registered on a.example.com will not work on b.example.com.
+
+= Should users have a passkey or an authenticator app? =
+
+A passkey, if the device allows it — it is the only second factor that cannot be typed into a fake login page. But there is no need to choose: an account can hold both, and either one gets you in. Whichever comes first also issues the recovery codes.
 
 = What happens if I lose my authenticator app? =
 
@@ -135,6 +168,17 @@ Not by default. Application passwords and XML-RPC authenticate through the same 
 No. Activation on a network stops with a message rather than misbehaving quietly.
 
 == Changelog ==
+
+= 1.8.0 =
+* Added: passkeys. A second factor that is not a code — a WebAuthn credential held by the phone, laptop, hardware key or password manager that created it. There is nothing to type and nothing to read out over the phone, and the browser will only ever offer the passkey to your exact domain, so a convincing copy of your login page gets nothing. Only a public key is stored on the site; the private half never leaves the device.
+* Added: passkeys and authenticator apps sit side by side. An account can hold either or both, either one satisfies the "administrators must use two-factor" requirement, and the setup screen lists registered passkeys with when each was added and last used, with renaming and removal. Up to ten per account.
+* Added: passwordless sign-in, off by default. Where you switch it on, the login screen gains a "Sign in with a passkey" button, and browsers that support it offer the passkey from the username field's own autofill list. The authenticator must verify the user — fingerprint, face or PIN — so the device and the person holding it are both proven. Country rules, the IP deny list and the kill switch all still apply, and every such sign-in is logged as one.
+* Added: registering your first passkey now also issues your recovery codes, if you do not have a set. A passkey lives on one device, and losing that device with nothing written down would otherwise mean losing the account.
+* Added: new log events for passkeys registered, removed, used and used for a passwordless sign-in, for refused verifications, and for a signature-counter anomaly. That last one is what a cloned authenticator looks like — an authenticator that keeps a counter should never repeat a value — and it is reported at critical severity by e-mail. The sign-in itself is not refused, because a mis-implemented authenticator would otherwise lock a legitimate user out for good.
+* Added: two settings under Settings → Two-factor — whether users may register passkeys (on by default; the feature simply never offers itself on a site without HTTPS), and whether a passkey may sign in without the password (off by default).
+* Changed: the authenticator app can now be removed on its own, leaving your passkeys and recovery codes in place. "Turn off two-factor authentication" still removes everything, as does an administrator reset — an account you believe is unprotected must not still hold a credential that can sign in.
+* Changed: recovery codes are no longer reissued when a second factor is added to an account that already has a set. Reissuing would silently invalidate the codes you filed away.
+* Note: passkeys need HTTPS, because browsers refuse to create one over a plain connection, and they are bound to your domain — on a subdomain multisite, one registered on a.example.com will not work on b.example.com. Nothing about this contacts anything outside your own site: the WebAuthn library is bundled with the plugin and reaches no network.
 
 = 1.7.0 =
 * Changed: the plugin is now called Vokull Security Center, with the permalink and text domain vokull-security-center. The WordPress.org review flagged "Sentinel" as a name already carried by well-known security products in this same field. Vökull is Icelandic for "vigilant", "watchful" — the name the project has been developed under all along.
@@ -219,6 +263,9 @@ No. Activation on a network stops with a message rather than misbehaving quietly
 * Initial scaffolding release.
 
 == Upgrade Notice ==
+
+= 1.8.0 =
+Adds passkeys as a second factor alongside authenticator apps, and optional passwordless sign-in. Nothing to do after updating: existing two-factor setups are untouched and passkeys are opt-in per account. On an HTTPS site, users will find "Add a passkey" on their Two-factor screen.
 
 = 1.7.0 =
 Sentinel Security Center is now Vokull Security Center. Settings, log and baselines are preserved. One manual step: the main plugin file was renamed, so WordPress leaves the plugin switched off after updating — activate it again on the Plugins screen.

@@ -64,9 +64,22 @@ final class Two_Factor {
 	}
 
 	/**
-	 * Is the feature usable at all on this installation?
+	 * Is a second factor usable at all on this installation?
+	 *
+	 * "Usable" covers two independent things. An authenticator app needs
+	 * somewhere safe to keep the shared secret, which means OpenSSL. A passkey
+	 * has no secret to keep but needs a browser willing to talk to an
+	 * authenticator, which means HTTPS. A site can offer either, both, or
+	 * neither, and the screens say which.
 	 */
 	public static function is_available(): bool {
+		return self::totp_available() || Passkeys::is_available();
+	}
+
+	/**
+	 * Can this installation offer authenticator apps?
+	 */
+	public static function totp_available(): bool {
 		$settings = self::settings();
 
 		return ! empty( $settings['enabled'] ) && Secret_Cipher::is_available();
@@ -74,13 +87,59 @@ final class Two_Factor {
 
 	/**
 	 * Does this user have a working second factor right now?
+	 *
+	 * Either kind counts. An account with a passkey and no authenticator app is
+	 * at least as well protected as one with the app: the credential is bound
+	 * to this domain by the browser, so it survives the phishing page that a
+	 * typed six-digit code does not.
 	 */
 	public static function is_active_for( int $user_id ): bool {
-		if ( ! self::is_available() || $user_id <= 0 ) {
+		if ( $user_id <= 0 ) {
+			return false;
+		}
+
+		return self::has_totp( $user_id ) || self::has_passkey( $user_id );
+	}
+
+	/**
+	 * Is an authenticator app set up and usable?
+	 */
+	public static function has_totp( int $user_id ): bool {
+		if ( ! self::totp_available() || $user_id <= 0 ) {
 			return false;
 		}
 
 		return '' !== self::secret_for( $user_id );
+	}
+
+	/**
+	 * Is at least one passkey registered and usable?
+	 */
+	public static function has_passkey( int $user_id ): bool {
+		if ( ! Passkeys::is_available() || $user_id <= 0 ) {
+			return false;
+		}
+
+		return Passkeys::has_any( $user_id );
+	}
+
+	/**
+	 * The factors this account can actually sign in with, for display.
+	 *
+	 * @return string[] Any of 'totp', 'passkey'.
+	 */
+	public static function methods_for( int $user_id ): array {
+		$methods = [];
+
+		if ( self::has_totp( $user_id ) ) {
+			$methods[] = 'totp';
+		}
+
+		if ( self::has_passkey( $user_id ) ) {
+			$methods[] = 'passkey';
+		}
+
+		return $methods;
 	}
 
 	/**
@@ -188,7 +247,10 @@ final class Two_Factor {
 		update_user_meta( $user_id, self::META_LAST_SLOT, $slot );
 		delete_user_meta( $user_id, self::META_PENDING );
 
-		$codes = self::generate_recovery_codes( $user_id );
+		// A user who already has a passkey already has a set of codes. Minting
+		// a fresh one here would silently invalidate the set they filed away
+		// when they registered the passkey.
+		$codes = self::ensure_recovery_codes( $user_id );
 
 		$user = get_userdata( $user_id );
 
@@ -210,12 +272,53 @@ final class Two_Factor {
 	}
 
 	/**
-	 * Turn the second factor off and forget everything about it.
+	 * Turn off the authenticator app, leaving any passkeys in place.
+	 *
+	 * Recovery codes survive: they belong to the account's second factor as a
+	 * whole, and a user who still has passkeys still needs a way back in.
+	 */
+	public static function disable_totp( int $user_id ): void {
+		if ( ! self::has_totp( $user_id ) ) {
+			return;
+		}
+
+		foreach ( [ self::META_SECRET, self::META_PENDING, self::META_ENABLED_AT, self::META_LAST_SLOT ] as $meta ) {
+			delete_user_meta( $user_id, $meta );
+		}
+
+		$user  = get_userdata( $user_id );
+		$login = $user ? (string) $user->user_login : (string) $user_id;
+
+		Logger::log(
+			'2fa.totp_disabled',
+			[
+				'object_id'    => (string) $user_id,
+				'object_label' => $login,
+				'target_user'  => $user_id,
+				'message'      => sprintf(
+					'The authenticator app was removed from "%s". %s',
+					$login,
+					self::has_passkey( $user_id )
+						? 'The account still has a passkey, so it keeps a second factor.'
+						: 'The account now has no second factor at all.'
+				),
+				'data'         => [ 'passkeys_left' => Passkeys::count_for( $user_id ) ],
+			]
+		);
+	}
+
+	/**
+	 * Turn the second factor off entirely and forget everything about it.
+	 *
+	 * Both kinds go: the authenticator secret, the recovery codes, and every
+	 * registered passkey. Anything less would leave an account the user
+	 * believes is unprotected still holding a credential that can sign in.
 	 *
 	 * @param string $reason Free text for the log: "self", "admin", "reset".
 	 */
 	public static function disable( int $user_id, string $reason = 'self' ): void {
 		$was_active = self::is_active_for( $user_id );
+		$passkeys   = Passkeys::forget_all( $user_id );
 
 		foreach ( [ self::META_SECRET, self::META_PENDING, self::META_ENABLED_AT, self::META_LAST_SLOT, self::META_RECOVERY, self::META_EMAIL_CODE ] as $meta ) {
 			delete_user_meta( $user_id, $meta );
@@ -237,9 +340,30 @@ final class Two_Factor {
 				'message'      => 'admin' === $reason
 					? sprintf( 'Two-factor authentication was reset for "%s" by another administrator.', $login )
 					: sprintf( 'Two-factor authentication was switched off for "%s".', $login ),
-				'data'         => [ 'reason' => $reason ],
+				'data'         => [
+					'reason'           => $reason,
+					'passkeys_removed' => $passkeys,
+				],
 			]
 		);
+	}
+
+	/**
+	 * Make sure the account has recovery codes, minting a set if it has none.
+	 *
+	 * The first passkey goes through here. A passkey lives on one device, and a
+	 * user whose only factor is the phone in the sea has no way back in at all
+	 * unless something was written down first — so the codes are not an offer
+	 * at that moment, they are part of switching the factor on.
+	 *
+	 * @return string[] The new codes to show once, or [] when a set already existed.
+	 */
+	public static function ensure_recovery_codes( int $user_id ): array {
+		if ( self::recovery_codes_left( $user_id ) > 0 ) {
+			return [];
+		}
+
+		return self::generate_recovery_codes( $user_id );
 	}
 
 	public static function secret_for( int $user_id ): string {
