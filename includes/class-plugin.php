@@ -61,6 +61,7 @@ final class Plugin {
 		$this->add( 'plugin_monitor', new Plugin_Monitor() );
 		$this->add( 'user_monitor', new User_Monitor() );
 		$this->add( 'option_monitor', new Option_Monitor() );
+		$this->add( 'brute_force', new Brute_Force() );
 		$this->add( 'login_guard', new Login_Guard() );
 		$this->add( 'bypass_token', new Bypass_Token() );
 		$this->add( 'two_factor_login', new Two_Factor_Login() );

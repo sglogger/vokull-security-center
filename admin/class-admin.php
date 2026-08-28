@@ -351,6 +351,11 @@ final class Admin {
 				$this->redirect( 'geo', 'saved' );
 				break;
 
+			case 'release_lockouts':
+				Brute_Force::release_all();
+				$this->redirect_status( 'lockouts_released' );
+				break;
+
 			case 'run_scans':
 				File_Scanner::run();
 				User_Reconciler::run();
@@ -486,7 +491,45 @@ final class Admin {
 
 		update_option( Installer::OPTION_GEO, $geo );
 
+		$this->save_brute_force( $post );
+
 		Country_Resolver::flush();
+	}
+
+	/**
+	 * The failed-login rate limit, submitted with the rest of the Login &
+	 * Location tab but kept in its own option: it has nothing to do with
+	 * location, and mixing it into the geo settings would make both harder to
+	 * reason about.
+	 *
+	 * Every value is clamped by Lockout_Policy, which is also what the runtime
+	 * reads through — so a hand-edited option cannot produce a policy the
+	 * settings screen would refuse.
+	 *
+	 * @param array<string, mixed> $post Submitted data.
+	 */
+	private function save_brute_force( array $post ): void {
+		$before = Brute_Force::settings();
+
+		$brute = Lockout_Policy::settings(
+			[
+				'enabled'         => ! empty( $post['bf_enabled'] ),
+				'max_retries'     => (int) ( $post['bf_max_retries'] ?? 3 ),
+				'lockout_minutes' => (int) ( $post['bf_lockout_minutes'] ?? 15 ),
+				'max_lockouts'    => (int) ( $post['bf_max_lockouts'] ?? 5 ),
+				'extend_hours'    => (int) ( $post['bf_extend_hours'] ?? 24 ),
+				'reset_hours'     => (int) ( $post['bf_reset_hours'] ?? 24 ),
+			]
+		);
+
+		update_option( Installer::OPTION_BRUTE, $brute );
+
+		// Switching the rate limit off must actually free the addresses it is
+		// currently holding. Leaving them locked would be a setting that says
+		// one thing and a login screen that says another.
+		if ( $before['enabled'] && ! $brute['enabled'] ) {
+			Brute_Force::release_all();
+		}
 	}
 
 	/**
@@ -580,6 +623,18 @@ final class Admin {
 			}
 		}
 		$integrity['exclusions'] = $exclusions;
+
+		// Core files to leave alone. Stored as bare relative paths — the same
+		// form the official checksum manifest uses — so an entry either names
+		// a file in the manifest or names nothing at all.
+		$core_ignore = [];
+		foreach ( preg_split( '/[\r\n]+/', (string) ( $post['core_ignore'] ?? '' ) ) ?: [] as $line ) {
+			$line = ltrim( trim( sanitize_text_field( $line ) ), '/' );
+			if ( '' !== $line ) {
+				$core_ignore[] = $line;
+			}
+		}
+		$integrity['core_ignore'] = array_values( array_unique( $core_ignore ) );
 
 		update_option( Installer::OPTION_INTEGRITY, $integrity );
 	}
@@ -707,16 +762,17 @@ final class Admin {
 		}
 
 		$messages = [
-			'saved'         => [ 'success', __( 'Settings saved.', 'vokull-security-center' ) ],
-			'geoip_ok'      => [ 'success', __( 'The GeoIP database was downloaded and installed.', 'vokull-security-center' ) ],
-			'geoip_failed'  => [ 'error', __( 'The GeoIP database could not be downloaded. See the Status screen for the reason.', 'vokull-security-center' ) ],
-			'mail_ok'       => [ 'success', __( 'The test alert was accepted for delivery. Check the recipient inbox.', 'vokull-security-center' ) ],
-			'mail_failed'   => [ 'error', self::mail_failure_message() ],
-			'cf_ok'         => [ 'success', self::cf_fetched_message() ],
-			'cf_failed'     => [ 'error', __( 'Cloudflare\'s address list could not be retrieved. Nothing was changed; your trusted-proxy list is as it was.', 'vokull-security-center' ) ],
-			'scanned'       => [ 'success', __( 'All scans have been run. Any findings are in the event log.', 'vokull-security-center' ) ],
-			'sessions'      => [ 'success', __( 'All sessions were destroyed. Everyone, including you, must sign in again.', 'vokull-security-center' ) ],
-			'denylist_self' => [ 'warning', self::denylist_self_message() ],
+			'saved'             => [ 'success', __( 'Settings saved.', 'vokull-security-center' ) ],
+			'geoip_ok'          => [ 'success', __( 'The GeoIP database was downloaded and installed.', 'vokull-security-center' ) ],
+			'geoip_failed'      => [ 'error', __( 'The GeoIP database could not be downloaded. See the Status screen for the reason.', 'vokull-security-center' ) ],
+			'mail_ok'           => [ 'success', __( 'The test alert was accepted for delivery. Check the recipient inbox.', 'vokull-security-center' ) ],
+			'mail_failed'       => [ 'error', self::mail_failure_message() ],
+			'cf_ok'             => [ 'success', self::cf_fetched_message() ],
+			'cf_failed'         => [ 'error', __( 'Cloudflare\'s address list could not be retrieved. Nothing was changed; your trusted-proxy list is as it was.', 'vokull-security-center' ) ],
+			'scanned'           => [ 'success', __( 'All scans have been run. Any findings are in the event log.', 'vokull-security-center' ) ],
+			'sessions'          => [ 'success', __( 'All sessions were destroyed. Everyone, including you, must sign in again.', 'vokull-security-center' ) ],
+			'denylist_self'     => [ 'warning', self::denylist_self_message() ],
+			'lockouts_released' => [ 'success', __( 'Every failed-login lockout was released. The addresses concerned start again with a full set of retries.', 'vokull-security-center' ) ],
 		];
 
 		if ( ! isset( $messages[ $notice ] ) ) {

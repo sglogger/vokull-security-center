@@ -126,6 +126,21 @@ final class Event_Registry {
 			'login.blocking_kill_switch'          => $e( self::HIGH, self::MODE_EMAIL, 'login', 'login' ),
 			'user.logout'                         => $e( self::INFO, self::MODE_OFF, 'login', 'login' ),
 
+			// Failed-login rate limiting. An ordinary lockout is the system
+			// working as designed and happens all day on any public site, so
+			// it is logged rather than mailed. The extended one is different:
+			// it means an address came back after being turned away five times
+			// and is still going, which is somebody trying rather than a bot
+			// passing through.
+			//
+			// An attempt made DURING a lockout takes the place of the
+			// login.failed line it would otherwise have produced — the same one
+			// row per guess, under the name that says what actually happened to
+			// it — so it starts at Info and log-only like its counterpart.
+			'login.lockout'                       => $e( self::WARNING, self::MODE_LOG, 'login', 'login' ),
+			'login.lockout_extended'              => $e( self::HIGH, self::MODE_EMAIL, 'login', 'login' ),
+			'login.blocked_lockout'               => $e( self::INFO, self::MODE_LOG, 'login', 'login' ),
+
 			// -----------------------------------------------------------------
 			// Two-factor authentication. A failed challenge means someone had
 			// the right password, which is why it is not filed as noise.

@@ -17,6 +17,8 @@ $wpsec_geo    = (array) get_option( Installer::OPTION_GEO, [] );
 $wpsec_state  = (array) get_option( Installer::OPTION_GEOIP_STATE, [] );
 $wpsec_budget = Alerts::budget_status();
 $wpsec_grants = Allowlist::temporary_detail();
+$wpsec_brute  = Brute_Force::settings();
+$wpsec_locked = Brute_Force::locked();
 
 /**
  * One status row.
@@ -99,6 +101,37 @@ $wpsec_row = static function ( string $label, bool $ok, string $value, string $d
 				)
 				: __( 'None — forwarding headers are ignored', 'vokull-security-center' ),
 			__( 'This is the correct setting unless the site sits behind a proxy or CDN.', 'vokull-security-center' )
+		);
+
+		$wpsec_row(
+			__( 'Failed login attempts', 'vokull-security-center' ),
+			! empty( $wpsec_brute['enabled'] ),
+			! empty( $wpsec_brute['enabled'] )
+				? sprintf(
+					/* translators: 1: number of failed attempts, 2: lockout length in minutes */
+					__( 'Locked out after %1$d attempts, for %2$d minutes', 'vokull-security-center' ),
+					(int) $wpsec_brute['max_retries'],
+					(int) $wpsec_brute['lockout_minutes']
+				)
+				: __( 'Not limited', 'vokull-security-center' ),
+			! empty( $wpsec_brute['enabled'] )
+				? trim(
+					(
+						$wpsec_brute['max_lockouts'] > 0
+							? sprintf(
+								/* translators: 1: number of lockouts, 2: extended lockout length in hours */
+								__( 'After %1$d lockouts the address is held for %2$d hours instead.', 'vokull-security-center' ),
+								(int) $wpsec_brute['max_lockouts'],
+								(int) $wpsec_brute['extend_hours']
+							)
+							: __( 'The extended lockout is switched off, so every lockout is the same length.', 'vokull-security-center' )
+					) . ' ' . sprintf(
+						/* translators: %d: reset window in hours */
+						__( 'An address that has been quiet for %d hours is forgotten. Never applies to the local network, to allow-listed addresses, or to a live bypass grant.', 'vokull-security-center' ),
+						(int) $wpsec_brute['reset_hours']
+					)
+				)
+				: __( 'Repeated wrong passwords from one address are recorded but not refused.', 'vokull-security-center' )
 		);
 		?>
 		</tbody>
@@ -239,6 +272,31 @@ $wpsec_row = static function ( string $label, bool $ok, string $value, string $d
 		<p class="description"><?php esc_html_e( 'WP-Cron runs on site traffic. On a quiet site these tasks can be badly late — which is precisely when a compromised site stops receiving visitors. Consider disabling WP-Cron and driving wp-cron.php from a real system cron.', 'vokull-security-center' ); ?></p>
 	<?php endif; ?>
 
+	<?php if ( ! empty( $wpsec_locked ) ) : ?>
+		<h2><?php esc_html_e( 'Addresses locked out right now', 'vokull-security-center' ); ?></h2>
+		<table class="widefat striped" style="max-width:900px;">
+			<thead>
+				<tr>
+					<th><?php esc_html_e( 'Address', 'vokull-security-center' ); ?></th>
+					<th><?php esc_html_e( 'Released in', 'vokull-security-center' ); ?></th>
+					<th><?php esc_html_e( 'Lockouts', 'vokull-security-center' ); ?></th>
+					<th><?php esc_html_e( 'Last user name tried', 'vokull-security-center' ); ?></th>
+				</tr>
+			</thead>
+			<tbody>
+			<?php foreach ( $wpsec_locked as $wpsec_ip => $wpsec_lock ) : ?>
+				<tr>
+					<td><code><?php echo esc_html( (string) $wpsec_ip ); ?></code></td>
+					<td><?php echo esc_html( Brute_Force::duration( max( 0, (int) $wpsec_lock['until'] - time() ) ) ); ?></td>
+					<td><?php echo esc_html( (string) (int) $wpsec_lock['lockouts'] ); ?></td>
+					<td><?php echo '' !== $wpsec_lock['user'] ? esc_html( $wpsec_lock['user'] ) : '—'; ?></td>
+				</tr>
+			<?php endforeach; ?>
+			</tbody>
+		</table>
+		<p class="description"><?php esc_html_e( 'The roster shown here keeps the most recent 200 addresses. The lockouts themselves are counted separately and are not limited to that number.', 'vokull-security-center' ); ?></p>
+	<?php endif; ?>
+
 	<?php if ( ! empty( $wpsec_grants ) ) : ?>
 		<h2><?php esc_html_e( 'Active bypass grants', 'vokull-security-center' ); ?></h2>
 		<table class="widefat striped" style="max-width:900px;">
@@ -268,6 +326,14 @@ $wpsec_row = static function ( string $label, bool $ok, string $value, string $d
 		<?php submit_button( __( 'Run all scans now', 'vokull-security-center' ), 'secondary', 'submit', false ); ?>
 		</form>
 	</p>
+	<?php if ( ! empty( $wpsec_locked ) ) : ?>
+	<p>
+		<?php Admin::form_open( 'release_lockouts' ); ?>
+		<?php submit_button( __( 'Release all lockouts', 'vokull-security-center' ), 'secondary', 'submit', false ); ?>
+		<span class="description"><?php esc_html_e( 'Every locked address starts again with a full set of retries.', 'vokull-security-center' ); ?></span>
+		</form>
+	</p>
+	<?php endif; ?>
 	<?php if ( ! empty( $wpsec_grants ) ) : ?>
 	<p>
 		<?php Admin::form_open( 'revoke_grants' ); ?>

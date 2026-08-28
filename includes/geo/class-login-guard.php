@@ -227,8 +227,10 @@ final class Login_Guard {
 	 * Record a failed authentication attempt.
 	 *
 	 * wp_authenticate() fires this for every WP_Error result, which includes
-	 * the error returned for a geo-blocked login. That one is already recorded
-	 * as login.blocked_geo, so it is skipped here rather than counted twice.
+	 * the errors this plugin returns itself. A geo-blocked login is already
+	 * recorded as login.blocked_geo and an attempt made during a lockout as
+	 * login.blocked_lockout, so both are skipped here rather than written
+	 * twice under two names.
 	 *
 	 * Nothing is derived from the attempt beyond what was submitted: the
 	 * password is never touched, and whether the account exists is recorded
@@ -241,7 +243,7 @@ final class Login_Guard {
 	public function on_login_failed( $username = '', $error = null ): void {
 		$code = ( $error instanceof \WP_Error ) ? (string) $error->get_error_code() : '';
 
-		if ( 'wpsec_geo_blocked' === $code ) {
+		if ( in_array( $code, [ 'wpsec_geo_blocked', Brute_Force::ERROR_CODE ], true ) ) {
 			return;
 		}
 

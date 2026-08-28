@@ -18,6 +18,7 @@ $wpsec_settings  = (array) get_option( Installer::OPTION_SETTINGS, [] );
 $wpsec_log       = (array) get_option( Installer::OPTION_LOG, [] );
 $wpsec_geo       = (array) get_option( Installer::OPTION_GEO, [] );
 $wpsec_integrity = (array) get_option( Installer::OPTION_INTEGRITY, [] );
+$wpsec_brute     = Brute_Force::settings();
 
 $wpsec_tabs = [
 	'general'   => __( 'General', 'vokull-security-center' ),
@@ -451,6 +452,87 @@ $wpsec_tabs = [
 				</td>
 			</tr>
 		</table>
+
+		<h2><?php esc_html_e( 'Failed login attempts', 'vokull-security-center' ); ?></h2>
+		<p class="description" style="max-width:46em;">
+			<?php esc_html_e( 'Repeated wrong passwords from one address are refused for a while, and refused for much longer when the address keeps coming back. This is the only rule here that acts on what the site itself observed rather than on where an address appears to be, which is why it is on by default.', 'vokull-security-center' ); ?>
+		</p>
+		<table class="form-table" role="presentation">
+			<tr>
+				<th scope="row"><?php esc_html_e( 'Rate limiting', 'vokull-security-center' ); ?></th>
+				<td>
+					<label>
+						<input type="checkbox" name="bf_enabled" value="1" <?php checked( ! empty( $wpsec_brute['enabled'] ) ); ?>>
+						<?php esc_html_e( 'Lock out an address after too many failed logins', 'vokull-security-center' ); ?>
+					</label>
+					<p class="description">
+						<?php esc_html_e( 'Never applies to the local network, to addresses on the always-allowed list above, or to an address holding a live bypass grant — so this cannot be the thing that shuts you out. WPSEC_DISABLE_BLOCKING stands it down along with the country rule.', 'vokull-security-center' ); ?>
+					</p>
+				</td>
+			</tr>
+			<tr>
+				<th scope="row"><label for="wpsec-bf-max-retries"><?php esc_html_e( 'Max retries', 'vokull-security-center' ); ?></label></th>
+				<td>
+					<input type="number" id="wpsec-bf-max-retries" name="bf_max_retries" min="1" max="100" style="width:80px;" value="<?php echo esc_attr( (string) $wpsec_brute['max_retries'] ); ?>">
+					<?php esc_html_e( 'failed attempts', 'vokull-security-center' ); ?>
+					<p class="description"><?php esc_html_e( 'How many wrong passwords an address may submit before it is locked out. Attempts that were refused for another reason — a country rule, an existing lockout — are not counted, because the password in those was never wrong.', 'vokull-security-center' ); ?></p>
+				</td>
+			</tr>
+			<tr>
+				<th scope="row"><label for="wpsec-bf-lockout"><?php esc_html_e( 'Lockout time', 'vokull-security-center' ); ?></label></th>
+				<td>
+					<input type="number" id="wpsec-bf-lockout" name="bf_lockout_minutes" min="1" max="1440" style="width:80px;" value="<?php echo esc_attr( (string) $wpsec_brute['lockout_minutes'] ); ?>">
+					<?php esc_html_e( 'minutes', 'vokull-security-center' ); ?>
+					<p class="description"><?php esc_html_e( 'How long an address is turned away once it runs out of retries. When the time is up it gets a full set of retries back.', 'vokull-security-center' ); ?></p>
+				</td>
+			</tr>
+			<tr>
+				<th scope="row"><label for="wpsec-bf-max-lockouts"><?php esc_html_e( 'Max lockouts', 'vokull-security-center' ); ?></label></th>
+				<td>
+					<input type="number" id="wpsec-bf-max-lockouts" name="bf_max_lockouts" min="0" max="100" style="width:80px;" value="<?php echo esc_attr( (string) $wpsec_brute['max_lockouts'] ); ?>">
+					<?php esc_html_e( 'lockouts', 'vokull-security-center' ); ?>
+					<p class="description"><?php esc_html_e( 'After this many lockouts the address is held for the extended time below instead, and stays on the long sentence until it goes quiet. Set to 0 to switch the escalation off and keep every lockout the same length.', 'vokull-security-center' ); ?></p>
+				</td>
+			</tr>
+			<tr>
+				<th scope="row"><label for="wpsec-bf-extend"><?php esc_html_e( 'Extend lockout', 'vokull-security-center' ); ?></label></th>
+				<td>
+					<input type="number" id="wpsec-bf-extend" name="bf_extend_hours" min="1" max="720" style="width:80px;" value="<?php echo esc_attr( (string) $wpsec_brute['extend_hours'] ); ?>">
+					<?php esc_html_e( 'hours', 'vokull-security-center' ); ?>
+					<p class="description"><?php esc_html_e( 'The long sentence, served once an address has reached the number of lockouts above.', 'vokull-security-center' ); ?></p>
+				</td>
+			</tr>
+			<tr>
+				<th scope="row"><label for="wpsec-bf-reset"><?php esc_html_e( 'Reset retries', 'vokull-security-center' ); ?></label></th>
+				<td>
+					<input type="number" id="wpsec-bf-reset" name="bf_reset_hours" min="1" max="8760" style="width:80px;" value="<?php echo esc_attr( (string) $wpsec_brute['reset_hours'] ); ?>">
+					<?php esc_html_e( 'hours', 'vokull-security-center' ); ?>
+					<p class="description"><?php esc_html_e( 'An address that has been quiet for this long is forgotten: both the retries it had used and the lockouts it had collected. Without this an address that misbehaved once a year ago would start its next bad day one step from the long sentence.', 'vokull-security-center' ); ?></p>
+				</td>
+			</tr>
+			<tr>
+				<th scope="row"><?php esc_html_e( 'Being told about it', 'vokull-security-center' ); ?></th>
+				<td>
+					<p class="description" style="max-width:46em;">
+						<?php
+						printf(
+							/* translators: %s: link to the Alerts settings tab */
+							esc_html__( 'Lockouts are events like any other: choose e-mail, log only or off for each of them on the %s tab, under "Logins". Out of the box an ordinary lockout is logged and an extended one is e-mailed — on a public site the first happens all day, and the second means somebody is still trying after being turned away five times.', 'vokull-security-center' ),
+							'<a href="' . esc_url(
+								add_query_arg(
+									[
+										'page' => Admin::MENU_SETTINGS,
+										'tab'  => 'alerts',
+									],
+									admin_url( 'admin.php' )
+								)
+							) . '">' . esc_html__( 'Alerts', 'vokull-security-center' ) . '</a>'
+						);
+						?>
+					</p>
+				</td>
+			</tr>
+		</table>
 		<?php submit_button(); ?>
 		</form>
 
@@ -579,7 +661,19 @@ $wpsec_tabs = [
 				<th scope="row"><label for="wpsec-exclusions"><?php esc_html_e( 'Ignore paths containing', 'vokull-security-center' ); ?></label></th>
 				<td>
 					<textarea id="wpsec-exclusions" name="exclusions" rows="4" class="large-text code"><?php echo esc_textarea( implode( "\n", (array) ( $wpsec_integrity['exclusions'] ?? [] ) ) ); ?></textarea>
-					<p class="description"><?php esc_html_e( 'One fragment per line. Anything whose path contains it is skipped.', 'vokull-security-center' ); ?></p>
+					<p class="description"><?php esc_html_e( 'One fragment per line. Anything whose path contains it is skipped. This covers the filesystem scan; core files are named separately below, because those are matched against the official manifest rather than walked.', 'vokull-security-center' ); ?></p>
+				</td>
+			</tr>
+			<tr>
+				<th scope="row"><label for="wpsec-core-ignore"><?php esc_html_e( 'Core files to ignore', 'vokull-security-center' ); ?></label></th>
+				<td>
+					<textarea id="wpsec-core-ignore" name="core_ignore" rows="4" class="large-text code"><?php echo esc_textarea( implode( "\n", (array) ( $wpsec_integrity['core_ignore'] ?? [] ) ) ); ?></textarea>
+					<p class="description">
+						<?php esc_html_e( 'One path per line, relative to the WordPress root and written exactly as the official checksum manifest names it — wp-includes/version.php, for example. A file named here is reported neither as modified nor as missing.', 'vokull-security-center' ); ?>
+					</p>
+					<p class="description">
+						<?php esc_html_e( 'The files hosts routinely strip are already ignored without being listed: readme.html, license.txt, robots.txt, .htaccess, the wp-config pair, and the translated readme a localised build ships in place of readme.html — liesmich.html in German, lisezmoi.html in French, and so on. Use this box for anything else your particular install is known to be missing.', 'vokull-security-center' ); ?>
+					</p>
 				</td>
 			</tr>
 		</table>

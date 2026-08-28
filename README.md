@@ -55,12 +55,18 @@ as few false alarms as possible. Every decision below follows from that.
   only, or off.
 - **Blocking is never on by default.** Login blocking ships in monitor mode, so
   you can see what a rule *would* have done before arming it.
-- **Failed logins are recorded, not acted on.** `login.failed` is written to the
-  log at Info, log-only, so the attempts are there when you need them — but
-  there are no counters, no thresholds and no lockouts. Rate limiting belongs in
-  the firewall, CDN or fail2ban, where it can act before the request reaches
-  PHP. Every rule this plugin *enforces* reacts only to authentication that
-  actually succeeded.
+- **Blocking on evidence, not on inference.** The two rules that refuse a login
+  do so for different reasons and are armed differently because of it. The
+  country rule acts on a database's opinion about where an address sits, so it
+  ships in monitor mode and waits to be armed. The failed-login rate limit acts
+  on the site's own record of repeated failures — three wrong passwords is
+  evidence, not a guess — so it is on out of the box.
+- **Individual failed logins are still recorded rather than acted on.**
+  `login.failed` is written to the log at Info, log-only, so the attempts are
+  there when you need them. It is the *pattern* the rate limit responds to, not
+  the single attempt. None of this replaces a firewall, CDN rule or fail2ban,
+  which act before the request reaches PHP; it is what you have when none of
+  those are available.
 - **The plugin never modifies, quarantines or deletes a scanned file.** It
   reports; recovery is your call. A false positive must never be able to break a
   working site.
@@ -78,7 +84,7 @@ as few false alarms as possible. Every decision below follows from that.
 | Out-of-band | user rows altered directly in the database, found by an hourly reconciliation scan against a stored baseline |
 | Configuration | `siteurl`, `home`, `admin_email`, `users_can_register`, `default_role`, `blog_public`, `wp-config.php` and `.htaccess` hashes, WordPress core files against the official checksums, cron jobs, new must-use plugins, XML-RPC state, file-editor state, application passwords |
 | Filesystem | new or changed files in `wp-content/mu-plugins/`, any PHP file under `wp-content/uploads/`, and backdoor signatures in new PHP files |
-| Logins | failed attempts, successful logins, logins from a country outside the allow list, and logins refused by the IP deny list — with optional blocking |
+| Logins | failed attempts, successful logins, logins from a country outside the allow list, logins refused by the IP deny list — with optional blocking — and addresses locked out for repeated wrong passwords |
 | Two-factor | enrolment, removal, wrong codes after a correct password, recovery-code and e-mail-fallback use |
 
 ## Settings
@@ -106,8 +112,9 @@ does routinely.</p>
 <td width="50%" valign="top">
 <a href="screenshots/Settings_Login_Locations.png"><img src="screenshots/Settings_Login_Locations.png" alt="Settings &rarr; Login &amp; Location" width="100%"></a>
 <p><b>Login &amp; Location</b> &mdash; allowed countries, the IP/CIDR allow and deny
-lists, trusted proxies and the CDN country header, and the bypass-link timings.
-The screen refuses a deny entry that matches the address you are saving from.</p>
+lists, trusted proxies and the CDN country header, the bypass-link timings, and
+the failed-login rate limit (retries, lockout, escalation, reset). The screen
+refuses a deny entry that matches the address you are saving from.</p>
 </td>
 <td width="50%" valign="top">
 <a href="screenshots/Settings_2FA.png"><img src="screenshots/Settings_2FA.png" alt="Settings &rarr; Two-Factor" width="100%"></a>
@@ -122,7 +129,8 @@ default because it is a real weakening.</p>
 <a href="screenshots/Settings_File_Integrity.png"><img src="screenshots/Settings_File_Integrity.png" alt="Settings &rarr; File Integrity" width="100%"></a>
 <p><b>File Integrity</b> &mdash; which trees are scanned, the backdoor-heuristic
 score at which a new PHP file is reported, a per-run file ceiling so a huge
-uploads directory cannot exhaust the PHP time limit, and path fragments to skip.</p>
+uploads directory cannot exhaust the PHP time limit, path fragments to skip, and
+core files to leave alone.</p>
 </td>
 <td width="50%" valign="top"></td>
 </tr>
@@ -363,6 +371,50 @@ The WebAuthn protocol itself (CBOR, COSE, signature verification) is
 [lbuchs/WebAuthn](https://github.com/lbuchs/webauthn), MIT-licensed and bundled
 under `vendor/`. It has no dependencies of its own and reaches no network.
 
+## Failed-login rate limiting
+
+Repeated wrong passwords from one address are refused, on **Settings → Login &
+Location**. The arithmetic is a pure function in
+[`Lockout_Policy`](includes/auth/class-lockout-policy.php), free of WordPress so
+the whole escalation table can be unit-tested;
+[`Brute_Force`](includes/auth/class-brute-force.php) is the wiring.
+
+| Setting | Default | What it does |
+|---|---|---|
+| Max retries | 3 | Wrong passwords allowed before a lockout |
+| Lockout time | 15 minutes | How long the address is turned away. It gets the full retry budget back afterwards, not one attempt |
+| Max lockouts | 5 | Lockouts collected before the long sentence. 0 switches the escalation off |
+| Extend lockout | 24 hours | The long sentence, served on that lockout and every one after it |
+| Reset retries | 24 hours | An address quiet for this long is forgotten — retries *and* lockout tally |
+
+Dropping the tally along with the retries is deliberate. Keeping it would mean
+an address that misbehaved once a year ago starts its next bad day one step from
+the long sentence.
+
+**Where it is enforced.** On `wp_authenticate_user`, which fires after the
+account is found and *before* `wp_check_password()` — so a locked address never
+gets a password hash computed for it, which is the point of a rate limit. A
+backstop on `authenticate` at priority 30 (after core's filters at 20, before
+`Login_Guard` at 50) catches the paths that never reach the first hook: an
+unknown user name, an e-mail login, XML-RPC, an application password, or a
+third-party plugin authenticating on its own.
+
+**What it never touches.** The local network — a site behind a misconfigured
+proxy reports every visitor as `127.0.0.1`, and one bot would otherwise lock out
+the world — addresses on the always-allowed list, and addresses holding a live
+bypass grant. `WPSEC_DISABLE_BLOCKING` stands it down along with the country
+rule. A login refused by the country rule is not counted as a guess either: the
+password in it was correct, and counting it would let the location rule lock out
+the administrator it had just protected. A successful sign-in clears the address
+outright, and the Status screen lists everything being held with a button to
+release it all.
+
+**Where the state lives.** Per-address transients, not one growing option: on a
+site under attack the hot path must not read and rewrite an array on every
+guess. The roster behind the Status screen is a separate, capped option holding
+the 200 most recent locked addresses — a display, not a second source of truth,
+and the lockouts themselves are not limited by that number.
+
 ## IP deny list
 
 A list of addresses and CIDR blocks — IPv4 and IPv6 — that can never sign in,
@@ -427,6 +479,12 @@ On top of that: private, loopback and link-local addresses are always allowed
 and are never reported as a foreign login, and if the GeoIP subsystem as a whole
 becomes unavailable, blocking automatically falls back to monitor mode and
 raises a critical alert. A deleted database file cannot lock you out.
+
+The failed-login rate limit is the one control here that *is* armed out of the
+box, so it is worth saying what it will not do. It never applies to the local
+network, to the allow list, or to an address holding a live bypass grant; the
+same kill switch stands it down; the Status screen releases every lockout in one
+click; and at worst an ordinary lockout is a fifteen-minute wait.
 
 ### Diagnostics
 

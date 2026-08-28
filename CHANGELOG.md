@@ -9,6 +9,96 @@ When a release goes out, the same summary must also be added to the
 `== Changelog ==` section of `readme.txt` — that is what WordPress shows in the
 plugin details modal.
 
+## [1.9.0] - 2026-08-28
+
+### Added
+
+- **Failed-login rate limiting**, under Settings → Login & Location. Repeated
+  wrong passwords from one address are refused for a while, and refused for
+  much longer when the address keeps coming back. Five settings, defaults in
+  brackets:
+
+  - **Max retries** (3) — how many wrong passwords an address may submit before
+    it is locked out.
+  - **Lockout time** (15 minutes) — how long it is then turned away. When the
+    time is up it gets the full set of retries back, not one attempt.
+  - **Max lockouts** (5) — how many lockouts it may collect before the long
+    sentence. 0 switches the escalation off.
+  - **Extend lockout** (24 hours) — the long sentence, served once that number
+    is reached and on every lockout after it.
+  - **Reset retries** (24 hours) — an address quiet for this long is forgotten
+    entirely, retries and lockout tally alike. Without that, an address that
+    misbehaved once a year ago would start its next bad day one step from the
+    long sentence.
+
+  On by default, unlike location blocking. The distinction is what the two act
+  on: the country rule blocks on an inference — a database's opinion about
+  where an address sits — whereas this blocks only on the site's own record of
+  repeated failures. Three wrong passwords is evidence, not a guess.
+
+- The lockout is enforced on `wp_authenticate_user`, which fires after the
+  account is found and *before* `wp_check_password()`. A locked address never
+  gets a password hash computed for it, which is the point of a rate limit —
+  the expensive operation is exactly what the attacker wants run over and over.
+  A backstop on `authenticate` at priority 30 catches the paths that never
+  reach the first hook: an unknown user name, an e-mail login, XML-RPC, an
+  application password, or a third-party plugin authenticating on its own.
+
+- Three log events, configurable on the Alerts tab like every other event:
+  `login.lockout` (Warning, logged), `login.lockout_extended` (High, e-mailed —
+  an address still going after five lockouts is somebody trying rather than a
+  bot passing through), and `login.blocked_lockout` for each attempt made
+  during a lockout. That last one takes the place of the `login.failed` line the
+  attempt would otherwise have produced, rather than being written alongside
+  it — the same one row per guess, under the name that says what actually
+  happened to it.
+
+- The Status screen lists every address currently being held — time left,
+  lockouts collected, last user name tried — with a button that releases all of
+  them and hands each one back a full set of retries. Switching the feature off
+  in the settings releases them too; a setting that says one thing while the
+  login screen says another would be worse than no setting.
+
+- The login screen now reports how many attempts remain, and says plainly when
+  a lockout has just started. That last message matters: the attempt that
+  spends the final retry fails for the ordinary reason, so without it the
+  person who mistyped would walk into a closed door on their next try with no
+  warning at all. It discloses nothing — whoever is guessing already knows how
+  many times they have tried.
+
+- **Core files to ignore**, under Settings → File Integrity. One path per line,
+  written as the official checksum manifest names them. A file listed here is
+  reported neither as modified nor as missing.
+
+### Fixed
+
+- The translated readme that a localised WordPress ships in place of
+  `readme.html` — `liesmich.html` in German, `lisezmoi.html` in French, and so
+  on for every language it is packaged in — is no longer reported as a missing
+  core file. Hosts strip it exactly as routinely as they strip `readme.html`,
+  which was already ignored. Matching on the extension rather than on a list of
+  names covers every locale, including ones added later, and cannot widen the
+  check: only files the official manifest lists are ever tested, so it reaches
+  the shipped readme and nothing else.
+
+### Safety rails
+
+- The rate limit never applies to the local network (a site behind a
+  misconfigured proxy reports every visitor as 127.0.0.1, and one bot would
+  otherwise lock out the world), to an address on the always-allowed list, or
+  to one holding a live bypass grant.
+- `WPSEC_DISABLE_BLOCKING` and the `wpsec_disable_blocking` filter stand it
+  down along with the country rule, so one line in `wp-config.php` reopens the
+  site without dashboard access however the door was shut.
+- A login refused by the country rule is not counted as a guess: the password
+  in it was correct, and counting it would let the location rule lock out the
+  administrator it had just protected.
+- A successful sign-in clears the address outright.
+- Counters live in per-address transients rather than in one growing option, so
+  a site under attack does not read and rewrite an array on every guess. The
+  roster behind the Status screen is capped at the 200 most recent addresses;
+  the lockouts themselves are not limited by that number.
+
 ## [1.8.0] - 2026-08-27
 
 ### Added

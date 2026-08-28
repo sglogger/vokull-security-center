@@ -35,6 +35,24 @@ final class Core_Checksums {
 		'wp-content/',
 	];
 
+	/**
+	 * Documentation that the localised builds ship under a translated name:
+	 * liesmich.html in German, lisezmoi.html in French, and so on for every
+	 * language WordPress is packaged in. Whether it survives is up to the
+	 * host — a great many strip it — and a site that switches language keeps
+	 * whichever file the package it was installed from happened to contain.
+	 *
+	 * Matching on the extension rather than on a list of names is what makes
+	 * this hold for every locale, including ones added after this release. It
+	 * cannot widen the check: only files the official manifest lists are ever
+	 * tested here, so this reaches the shipped readme and nothing else. An
+	 * .html file in the site root cannot execute anything in any case, which
+	 * is the same reason readme.html is on the list above.
+	 *
+	 * @var string[]
+	 */
+	private const IGNORED_ROOT_EXTENSIONS = [ 'html' ];
+
 	public function register(): void {
 		add_action( Installer::CRON_CORE_SCAN, [ __CLASS__, 'run' ] );
 	}
@@ -75,11 +93,12 @@ final class Core_Checksums {
 
 		$checked  = 0;
 		$findings = 0;
+		$ignores  = self::configured_ignores( $settings );
 
 		foreach ( $checksums as $file => $expected ) {
 			$file = (string) $file;
 
-			if ( self::ignored( $file ) ) {
+			if ( self::ignored( $file, $ignores ) ) {
 				continue;
 			}
 
@@ -293,8 +312,17 @@ final class Core_Checksums {
 		return md5_file( $path ) === $expected;
 	}
 
-	private static function ignored( string $file ): bool {
-		foreach ( self::IGNORED as $needle ) {
+	/**
+	 * Should this manifest entry be left alone?
+	 *
+	 * @param string[] $configured Extra paths the administrator named.
+	 */
+	private static function ignored( string $file, array $configured = [] ): bool {
+		foreach ( array_merge( self::IGNORED, $configured ) as $needle ) {
+			if ( '' === $needle ) {
+				continue;
+			}
+
 			if ( str_ends_with( $needle, '/' ) ) {
 				if ( str_starts_with( $file, $needle ) ) {
 					return true;
@@ -307,6 +335,36 @@ final class Core_Checksums {
 			}
 		}
 
+		// Documentation in the site root, under whatever name the localised
+		// package gave it.
+		if ( ! str_contains( $file, '/' ) ) {
+			$extension = strtolower( (string) pathinfo( $file, PATHINFO_EXTENSION ) );
+
+			if ( in_array( $extension, self::IGNORED_ROOT_EXTENSIONS, true ) ) {
+				return true;
+			}
+		}
+
 		return false;
+	}
+
+	/**
+	 * Core files the administrator has asked not to hear about.
+	 *
+	 * @param array<string, mixed> $settings The integrity settings.
+	 * @return string[]
+	 */
+	private static function configured_ignores( array $settings ): array {
+		$entries = [];
+
+		foreach ( (array) ( $settings['core_ignore'] ?? [] ) as $entry ) {
+			$entry = ltrim( trim( (string) $entry ), '/' );
+
+			if ( '' !== $entry ) {
+				$entries[] = $entry;
+			}
+		}
+
+		return array_values( array_unique( $entries ) );
 	}
 }

@@ -304,6 +304,12 @@ final class Mailer {
 			'login.bypass_redeemed'               => __( 'Bypass link redeemed by %1$s', 'vokull-security-center' ),
 			/* translators: %1$s: the plugin, theme, user, file or setting that the event concerns. */
 			'login.blocking_kill_switch'          => __( 'Login would have been blocked but the kill switch is active: %1$s', 'vokull-security-center' ),
+			/* translators: %1$s: the plugin, theme, user, file or setting that the event concerns. */
+			'login.lockout'                       => __( 'Address locked out after too many failed logins: %1$s', 'vokull-security-center' ),
+			/* translators: %1$s: the plugin, theme, user, file or setting that the event concerns. */
+			'login.lockout_extended'              => __( 'Address locked out for an extended period after repeated lockouts: %1$s', 'vokull-security-center' ),
+			/* translators: %1$s: the plugin, theme, user, file or setting that the event concerns. */
+			'login.blocked_lockout'               => __( 'Login attempt refused while the address is locked out: %1$s', 'vokull-security-center' ),
 			'option.siteurl_changed'              => __( 'The site URL was changed', 'vokull-security-center' ),
 			'option.home_changed'                 => __( 'The home URL was changed', 'vokull-security-center' ),
 			'option.admin_email_changed'          => __( 'The site administrator e-mail address was changed', 'vokull-security-center' ),

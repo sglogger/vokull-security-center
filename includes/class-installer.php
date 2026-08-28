@@ -37,6 +37,8 @@ final class Installer {
 	public const OPTION_CF_RANGES    = 'wpsec_cf_ranges';
 	public const OPTION_NOTICES      = 'wpsec_notices';
 	public const OPTION_2FA          = 'wpsec_two_factor';
+	public const OPTION_BRUTE        = 'wpsec_brute_force';
+	public const OPTION_LOCKOUTS     = 'wpsec_lockouts';
 
 	/**
 	 * Every option this plugin owns. Used by uninstall() so cleanup can never
@@ -62,6 +64,8 @@ final class Installer {
 			self::OPTION_CF_RANGES,
 			self::OPTION_NOTICES,
 			self::OPTION_2FA,
+			self::OPTION_BRUTE,
+			self::OPTION_LOCKOUTS,
 		];
 	}
 
@@ -454,6 +458,7 @@ final class Installer {
 		add_option( self::OPTION_INTEGRITY, self::default_integrity() );
 		add_option( self::OPTION_LOG, self::default_log_settings() );
 		add_option( self::OPTION_2FA, self::default_two_factor() );
+		add_option( self::OPTION_BRUTE, self::default_brute_force() );
 
 		// Non-autoloaded working state. These are written on every scan or
 		// lookup, so keeping them out of the autoload set matters.
@@ -464,6 +469,7 @@ final class Installer {
 		add_option( self::OPTION_SCAN_CURSOR, [], '', false );
 		add_option( self::OPTION_CF_RANGES, [], '', false );
 		add_option( self::OPTION_NOTICES, [], '', false );
+		add_option( self::OPTION_LOCKOUTS, [], '', false );
 	}
 
 	/**
@@ -534,6 +540,11 @@ final class Installer {
 			'max_files_per_run'   => 20000,
 			'max_hash_bytes'      => 2097152,
 			'exclusions'          => [],
+			// Core files the checksum verifier must not report. Empty by
+			// default: the files hosts routinely alter are already covered by
+			// Core_Checksums' own list, and this is the escape hatch for the
+			// ones only a particular install knows about.
+			'core_ignore'         => [],
 		];
 	}
 
@@ -563,6 +574,34 @@ final class Installer {
 			// that is an administrator's decision to make deliberately rather
 			// than one to inherit from a default.
 			'passwordless'   => false,
+		];
+	}
+
+	/**
+	 * Failed-login rate limiting.
+	 *
+	 * On by default, unlike location blocking. The distinction is what the two
+	 * act on: the country rule blocks on an inference — a database's opinion
+	 * about where an address sits — whereas this one blocks only on the site's
+	 * own record of repeated failures. Three wrong passwords is evidence, not
+	 * a guess, and fifteen minutes is a delay rather than a lockout in any
+	 * lasting sense.
+	 *
+	 * The rails that keep it from shutting an administrator out are in
+	 * Brute_Force::exempt(): the local network, the IP allow list and live
+	 * bypass grants are never counted, and WPSEC_DISABLE_BLOCKING stands this
+	 * down along with everything else.
+	 *
+	 * @return array<string, mixed>
+	 */
+	public static function default_brute_force(): array {
+		return [
+			'enabled'         => true,
+			'max_retries'     => 3,
+			'lockout_minutes' => 15,
+			'max_lockouts'    => 5,
+			'extend_hours'    => 24,
+			'reset_hours'     => 24,
 		];
 	}
 

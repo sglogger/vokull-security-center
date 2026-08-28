@@ -15,6 +15,7 @@ namespace WPSecurityCenter\Tests\Unit;
 
 use PHPUnit\Framework\TestCase;
 use WPSecurityCenter\Installer;
+use WPSecurityCenter\Lockout_Policy;
 
 final class SafeDefaultsTest extends TestCase {
 
@@ -72,6 +73,41 @@ final class SafeDefaultsTest extends TestCase {
 		$this->assertFalse(
 			$settings['delete_data_on_uninstall'],
 			'Discarding an audit trail must be an explicit choice, never a default.'
+		);
+	}
+
+	public function test_the_failed_login_limit_is_on_by_default(): void {
+		$brute = Installer::default_brute_force();
+
+		$this->assertTrue(
+			$brute['enabled'],
+			'Unlike the country rule, this one blocks on the site\'s own record of repeated failures rather than on an inference about where an address sits, so it is armed out of the box.'
+		);
+	}
+
+	public function test_the_failed_login_limit_leaves_room_for_a_typo(): void {
+		$brute = Lockout_Policy::settings( Installer::default_brute_force() );
+
+		$this->assertGreaterThan(
+			1,
+			$brute['max_retries'],
+			'A limit that fires on the first wrong password is a lockout, not a rate limit.'
+		);
+
+		$this->assertLessThanOrEqual(
+			60,
+			$brute['lockout_minutes'],
+			'The ordinary lockout has to be a delay a real person can wait out; the long sentence is what escalation is for.'
+		);
+	}
+
+	public function test_a_lockout_tally_cannot_outlive_the_reset_window(): void {
+		$brute = Lockout_Policy::settings( Installer::default_brute_force() );
+
+		$this->assertGreaterThan(
+			0,
+			$brute['reset_hours'],
+			'Without a reset window an address would carry its lockout tally for ever, and one bad afternoon years ago would put it one step from the long sentence.'
 		);
 	}
 

@@ -4,7 +4,7 @@ Tags: security, activity log, audit log, two-factor, passkeys
 Requires at least: 6.5
 Tested up to: 7.1
 Requires PHP: 8.1
-Stable tag: 1.8.0
+Stable tag: 1.9.0
 License: GPL-2.0-or-later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -24,7 +24,7 @@ It is built around two goals that pull against each other: miss as little as pos
 * User records altered directly in the database, outside WordPress, detected by a periodic reconciliation scan.
 * Configuration: critical options such as siteurl, home, admin_email, users_can_register and default_role; wp-config.php and .htaccess changes; WordPress core files verified against the official checksums; cron jobs; newly appearing must-use plugins; XML-RPC and file-editor state; application passwords.
 * Filesystem: new or changed files in wp-content/mu-plugins/, and any PHP file under wp-content/uploads/ — where one never belongs. New PHP files are additionally checked against common backdoor signatures.
-* Logins: failed attempts, successful logins, a login from a country outside your allow list, and logins refused by the IP deny list — with optional blocking.
+* Logins: failed attempts, successful logins, a login from a country outside your allow list, and logins refused by the IP deny list — with optional blocking. Repeated wrong passwords from one address are rate-limited: a configurable number of retries, then a lockout, then a much longer one for an address that keeps coming back.
 * Two-factor authentication: who switched it on or off, passkeys registered and removed, wrong codes submitted after a correct password, and every use of a recovery code or the e-mail fallback.
 
 A separate Hardening screen reports the current posture — file editor, permissions, salts, updates, HTTPS, two-factor coverage and more — against the official WordPress hardening guide, linking to it at each point.
@@ -139,9 +139,13 @@ No. They are non-interactive — there is nobody there to type a code — and an
 
 = Does it block brute-force login attempts? =
 
-No, by design. Failed attempts are logged — `login.failed`, at Info and log-only, so a burst of them is visible in the log and searchable by user name and IP — but nothing is enforced: no counters, no thresholds, no lockouts. Rate limiting belongs in your firewall, CDN or fail2ban, where it can act before the request reaches PHP. Every rule this plugin enforces reacts only to logins that actually succeeded.
+Yes, since 1.9.0, under Settings → Login & Location. An address gets three wrong passwords before it is locked out for fifteen minutes; after five lockouts it is held for twenty-four hours; an address that goes quiet for twenty-four hours is forgotten entirely. Every one of those numbers is yours to change.
 
-Set the event to "E-mail" only if you know the site is quiet. On a public site bots guess passwords around the clock, and an inbox that learns to ignore this plugin is worse than no alert at all.
+The lockout is checked before the password is verified, so a locked address does not even get a password hash computed for it. It applies to the login form, to XML-RPC and to application passwords alike — those are where most password guessing actually happens.
+
+This does not replace a firewall, a CDN rule or fail2ban, all of which act before the request reaches PHP and cost you nothing to run. It is what you have when none of those are available to you, and it is aimed at the volume rather than at a determined attacker.
+
+Failed attempts are still logged individually as `login.failed`, at Info and log-only. Set that event to "E-mail" only if you know the site is quiet — on a public site bots guess passwords around the clock, and an inbox that learns to ignore this plugin is worse than no alert at all. The lockouts themselves are separate events: `login.lockout` is logged, and `login.lockout_extended` is e-mailed, because an address that is still going after five lockouts is somebody trying rather than a bot passing through. An attempt made while an address is locked out is recorded as `login.blocked_lockout` instead of `login.failed`, so nothing is written twice.
 
 = Will country blocking stop a determined attacker? =
 
@@ -157,7 +161,9 @@ Almost always because the plugin was installed from a GitHub source archive rath
 
 = Can I get locked out? =
 
-Blocking is off until you arm it, and the settings screen refuses to arm it without a working database. If it does happen: the `WPSEC_DISABLE_BLOCKING` constant in wp-config.php disables blocking immediately, and the alert e-mail for every blocked login contains a single-use bypass link.
+Country blocking is off until you arm it, and the settings screen refuses to arm it without a working database. If it does happen: the `WPSEC_DISABLE_BLOCKING` constant in wp-config.php disables blocking immediately, and the alert e-mail for every blocked login contains a single-use bypass link.
+
+The failed-login rate limit is on out of the box, so it is worth knowing what it will not do. It never applies to the local network, to an address on your always-allowed list, or to one holding a live bypass grant; the same `WPSEC_DISABLE_BLOCKING` constant stands it down; and the Status screen lists every address being held with a button to release them all. At worst an ordinary lockout is a fifteen-minute wait.
 
 = Are logins over the REST API or XML-RPC blocked too? =
 
@@ -168,6 +174,16 @@ Not by default. Application passwords and XML-RPC authenticate through the same 
 No. Activation on a network stops with a message rather than misbehaving quietly.
 
 == Changelog ==
+
+= 1.9.0 =
+* Added: failed-login rate limiting, under Settings → Login & Location. Five settings, with the defaults in brackets: how many wrong passwords an address may submit (3), how long it is then locked out for (15 minutes), how many lockouts it may collect before the long sentence (5), how long that one lasts (24 hours), and how long an address must be quiet before it is forgotten altogether (24 hours). On by default — unlike the country rule, this one acts on the site's own record of repeated failures rather than on a database's opinion about where an address sits.
+* Added: the lockout is enforced before the password is checked, so a locked address never gets a password hash computed for it. It covers the login form, XML-RPC and application passwords alike.
+* Added: three log events — `login.lockout` (logged), `login.lockout_extended` (e-mailed, because an address still going after five lockouts is somebody trying rather than a bot passing through), and `login.blocked_lockout` for each attempt made during a lockout. The last one takes the place of the `login.failed` line that attempt would otherwise have produced rather than being written next to it, so the log does not grow. All three are configurable on the Alerts tab like every other event.
+* Added: the Status screen lists every address currently being held, with how long is left, how many lockouts it has collected and the last user name it tried — and a button to release them all at once.
+* Added: the login screen now says how many attempts are left before a lockout, and says plainly when the lockout has just started. Withholding that would only surprise the person who mistyped; whoever is guessing already knows how many times they have tried.
+* Added: Settings → File Integrity gained a "Core files to ignore" box, for core files your particular install is known to be missing.
+* Fixed: the translated readme that a localised WordPress ships in place of readme.html — liesmich.html in German, lisezmoi.html in French, and so on — is no longer reported as a missing core file. Hosts strip it as routinely as they strip readme.html, which was already ignored.
+* Note: the rate limit never applies to the local network, to an address on your always-allowed list, or to one holding a live bypass grant, and `WPSEC_DISABLE_BLOCKING` stands it down along with the country rule. It cannot be the thing that shuts you out of your own site.
 
 = 1.8.0 =
 * Added: passkeys. A second factor that is not a code — a WebAuthn credential held by the phone, laptop, hardware key or password manager that created it. There is nothing to type and nothing to read out over the phone, and the browser will only ever offer the passkey to your exact domain, so a convincing copy of your login page gets nothing. Only a public key is stored on the site; the private half never leaves the device.
@@ -263,6 +279,9 @@ No. Activation on a network stops with a message rather than misbehaving quietly
 * Initial scaffolding release.
 
 == Upgrade Notice ==
+
+= 1.9.0 =
+Adds failed-login rate limiting, on after the update: three wrong passwords lock an address out for 15 minutes, five lockouts hold it a day. Configurable under Settings, never applies to the local network or allow-listed addresses. Also stops reporting liesmich.html as a missing core file.
 
 = 1.8.0 =
 Adds passkeys as a second factor alongside authenticator apps, and optional passwordless sign-in. Nothing to do after updating: existing two-factor setups are untouched and passkeys are opt-in per account. On an HTTPS site, users will find "Add a passkey" on their Two-factor screen.

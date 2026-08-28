@@ -3,7 +3,7 @@
  * Plugin Name:       Vokull Security Center
  * Plugin URI:        https://github.com/sglogger/vokull-security-center
  * Description:       Security monitoring and alerting for WordPress ("vökull" is Icelandic for "vigilant/watchful"). Logs and alerts on plugin/theme changes, administrator and role changes, configuration changes, filesystem integrity and logins from countries outside your allow list — with optional login blocking and two-factor authentication. Administrator-only, with immediate e-mail alerts. There is no PRO version. All free.
- * Version:           1.8.0
+ * Version:           1.9.0
  * Requires at least: 6.5
  * Requires PHP:      8.1
  * Author:            Steven Glogger
@@ -25,7 +25,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // -----------------------------------------------------------------------------
 // Plugin constants
 // -----------------------------------------------------------------------------
-define( 'WPSEC_VERSION', '1.8.0' );
+define( 'WPSEC_VERSION', '1.9.0' );
 define( 'WPSEC_FILE', __FILE__ );
 define( 'WPSEC_DIR', plugin_dir_path( __FILE__ ) );
 define( 'WPSEC_URL', plugin_dir_url( __FILE__ ) );
@@ -39,7 +39,7 @@ define( 'WPSEC_MIN_WP', '6.5' );
 // Internal data-version constant – used by the migrator to know whether the
 // schema or stored options need patching up after an upgrade. Bumped
 // independently of the plugin version.
-define( 'WPSEC_DATA_VERSION', '1.3' );
+define( 'WPSEC_DATA_VERSION', '1.4' );
 
 // -----------------------------------------------------------------------------
 // Platform guards
@@ -114,10 +114,12 @@ require_once WPSEC_DIR . 'includes/geo/class-denylist.php';
 require_once WPSEC_DIR . 'includes/geo/class-bypass-token.php';
 require_once WPSEC_DIR . 'includes/geo/class-login-guard.php';
 
-// Two-factor authentication. Totp and Secret_Cipher are free of WordPress so
-// the code generation can be tested against the RFC vectors.
+// Authentication. Totp, Secret_Cipher and Lockout_Policy are free of WordPress
+// so the code generation and the lockout arithmetic can be tested on their own.
 require_once WPSEC_DIR . 'includes/auth/class-totp.php';
 require_once WPSEC_DIR . 'includes/auth/class-secret-cipher.php';
+require_once WPSEC_DIR . 'includes/auth/class-lockout-policy.php';
+require_once WPSEC_DIR . 'includes/auth/class-brute-force.php';
 require_once WPSEC_DIR . 'includes/auth/class-two-factor.php';
 require_once WPSEC_DIR . 'includes/auth/class-passkeys.php';
 require_once WPSEC_DIR . 'includes/auth/class-two-factor-login.php';
